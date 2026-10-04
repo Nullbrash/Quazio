@@ -1,0 +1,22 @@
+# Документы проекта — вне git
+CLAUDE.md
+.plans/
+.ideas/
+docs/
+
+# Секреты — репозиторий публичный
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+signing.properties
+.env
+
+# Сборка
+.gradle/
+build/
+.kotlin/
+local.properties
+.idea/
+*.iml
