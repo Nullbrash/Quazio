@@ -128,6 +128,8 @@
     <string name="cal_next">Далее</string>
     <string name="cal_week_sunday">Неделя начинается с воскресенья</string>
     <string name="cal_today">Сегодня</string>
+    <string name="cal_prev_day">Предыдущий день</string>
+    <string name="cal_next_day">Следующий день</string>
     <string name="cal_view_day">День</string>
     <string name="cal_view_week">Неделя</string>
     <string name="cal_view_month">Месяц</string>
@@ -143,7 +145,6 @@
     <string name="cal_save">Сохранить</string>
     <string name="cal_title_hint">Название события</string>
     <string name="cal_duration">Длительность: %1$s</string>
-    <string name="cal_color_calendar">Цвет календаря</string>
     <string name="cal_calendar">Календарь</string>
     <string name="cal_repeat">Повтор</string>
     <string name="cal_repeat_none">Однократное событие</string>

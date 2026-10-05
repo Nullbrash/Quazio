@@ -9,13 +9,18 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.ui.test.runComposeUiTest
 import io.github.nullbrash.quazio.feature.calendar.CalendarEvent
 import io.github.nullbrash.quazio.feature.calendar.CalendarInfo
 import io.github.nullbrash.quazio.feature.calendar.CalendarKind
 import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
 import io.github.nullbrash.quazio.feature.calendar.CalendarSource
-import io.github.nullbrash.quazio.feature.calendar.EventColor
 import io.github.nullbrash.quazio.feature.calendar.EventDraft
 import io.github.nullbrash.quazio.feature.calendar.KeyValueStore
 import kotlinx.datetime.TimeZone
@@ -50,6 +55,7 @@ class CalendarScreenUiTest {
             CalendarEvent("11", "1", "Зарядка", todayStart + 7 * h, todayStart + 7 * h + h / 2, false, zone.id, null, null, true, todayStart + 7 * h),
             // Весь день у Android — полночь UTC, а не местного времени.
             CalendarEvent("12", "1", "Отпуск", utcToday, utcToday + 24 * h, true, "UTC", null, null, false, utcToday),
+            CalendarEvent("13", "1", "Завтрашнее", todayStart + 24 * h + 12 * h, todayStart + 24 * h + 13 * h, false, zone.id, null, null, false, todayStart + 36 * h),
         )
         val created = mutableListOf<EventDraft>()
         val instanceEdits = mutableListOf<Pair<Long, EventDraft>>()
@@ -66,7 +72,6 @@ class CalendarScreenUiTest {
             "11" -> EventDraft("1", "Зарядка", todayStart - 10 * 24 * h + 7 * h, todayStart - 10 * 24 * h + 7 * h + h / 2, timeZone = zone.id, rrule = "FREQ=DAILY")
             else -> null
         }
-        override fun eventColors(calendarId: String) = listOf(EventColor("5", 0xFFFFC107))
     }
 
     @Test
@@ -115,6 +120,40 @@ class CalendarScreenUiTest {
         assertEquals(todayStart + 7 * h, instance)
         assertEquals(todayStart + 7 * h, d.start) // время этого повторения, а не начала серии
         assertNull(d.rrule)
+    }
+
+    @Test
+    fun draggingTheHandScrollsTimeAndCenterTapReturns() = runComposeUiTest {
+        val source = FakeSource()
+        setContent { MaterialTheme { CalendarScreen(source, prefs) } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(onAllNodes(hasText("Завтрашнее")).fetchSemanticsNodes().isEmpty())
+        // Два полных оборота по часовой: в 12-часовом режиме — сутки вперёд.
+        onNodeWithContentDescription("Циферблат дня").performTouchInput {
+            val c = center
+            val r = width * 0.35f
+            fun at(deg: Double) = Offset(c.x + r * sin(deg * PI / 180).toFloat(), c.y - r * cos(deg * PI / 180).toFloat())
+            down(at(0.0))
+            for (d in 5..720 step 5) moveTo(at(d.toDouble()))
+            up()
+        }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Завтрашнее")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isEmpty())
+        // Нажатие на центр — снова «сейчас».
+        onNodeWithContentDescription("Циферблат дня").performTouchInput { click(center) }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun dayButtonsUnderTheDialSwitchDays() = runComposeUiTest {
+        val source = FakeSource()
+        setContent { MaterialTheme { CalendarScreen(source, prefs) } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithContentDescription("Следующий день").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Завтрашнее")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("24 ч").assertExists() // другой день — сутки целиком
+        onNodeWithContentDescription("Предыдущий день").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test

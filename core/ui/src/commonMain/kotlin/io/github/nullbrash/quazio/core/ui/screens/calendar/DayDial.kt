@@ -23,7 +23,11 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.sp
 import io.github.nullbrash.quazio.core.ui.screens.finance.colorOf
 import io.github.nullbrash.quazio.feature.calendar.DialLayout
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -43,6 +47,10 @@ internal fun DayDial(
     modifier: Modifier = Modifier,
     /** Маленькое превью (окно события): подписи только 0, 6, 12, 18 и мелкий центр. */
     compact: Boolean = false,
+    /** Стрелку тянут по кругу: на сколько градусов повернули (по часовой — плюс). */
+    onDrag: ((Float) -> Unit)? = null,
+    /** Нажатие на центр круга — вернуться к «сейчас». */
+    onCenterTap: (() -> Unit)? = null,
 ) {
     val measurer = rememberTextMeasurer()
     val face = MaterialTheme.colorScheme.surfaceVariant
@@ -52,7 +60,27 @@ internal fun DayDial(
     val tomorrowColor = Color(0xFFFF9800)
     val handColor = Color(0xFFE53935)
 
-    Canvas(modifier.aspectRatio(1f).semantics { contentDescription = description }) {
+    var gestures: Modifier = Modifier
+    if (onDrag != null) gestures = gestures.pointerInput(Unit) {
+        // Поворот пальца вокруг центра — угол между прошлой и новой точкой касания.
+        detectDragGestures { change, _ ->
+            val c = Offset(size.width / 2f, size.height / 2f)
+            val before = degreesAround(c, change.previousPosition)
+            val after = degreesAround(c, change.position)
+            var delta = after - before
+            if (delta > 180f) delta -= 360f
+            if (delta < -180f) delta += 360f
+            change.consume()
+            onDrag(delta)
+        }
+    }
+    if (onCenterTap != null) gestures = gestures.pointerInput(Unit) {
+        detectTapGestures { p ->
+            val c = Offset(size.width / 2f, size.height / 2f)
+            if ((p - c).getDistance() < size.width * 0.15f) onCenterTap()
+        }
+    }
+    Canvas(modifier.aspectRatio(1f).then(gestures).semantics { contentDescription = description }) {
         val c = center
         val radius = size.minDimension / 2f * 0.80f
         drawCircle(face, radius, c)
@@ -119,6 +147,10 @@ internal fun DayDial(
         drawCentered(measurer, centerBottom, Offset(c.x, c.y + radius * (if (compact) 0.16f else 0.12f)), TextStyle(color = labelColor, fontSize = small))
     }
 }
+
+/** Угол точки вокруг центра: 0 — сверху, по часовой стрелке, 0…360. */
+private fun degreesAround(c: Offset, p: Offset): Float =
+    ((atan2((p.y - c.y).toDouble(), (p.x - c.x).toDouble()) * 180.0 / PI + 90.0 + 360.0) % 360.0).toFloat()
 
 /** Угол циферблата (0 — сверху, по часовой) → радианы для синуса/косинуса. */
 private fun angle(degreesFromTop: Float): Double = (degreesFromTop - 90.0) * PI / 180.0

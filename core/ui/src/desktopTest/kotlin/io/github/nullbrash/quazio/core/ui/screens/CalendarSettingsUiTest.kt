@@ -46,7 +46,6 @@ class CalendarSettingsUiTest {
         override fun deleteInstance(eventId: String, instanceStart: Long) = Unit
         override fun reminders(eventId: String) = emptyList<Int>()
         override fun event(eventId: String): EventDraft? = null
-        override fun eventColors(calendarId: String) = emptyList<io.github.nullbrash.quazio.feature.calendar.EventColor>()
     }
 
     private fun access(allow: Boolean) = object : CalendarAccess {

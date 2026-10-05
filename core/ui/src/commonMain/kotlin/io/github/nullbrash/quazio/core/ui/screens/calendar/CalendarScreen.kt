@@ -54,7 +54,9 @@ import io.github.nullbrash.quazio.core.ui.res.cal_all_day
 import io.github.nullbrash.quazio.core.ui.res.cal_dial
 import io.github.nullbrash.quazio.core.ui.res.cal_dial_12
 import io.github.nullbrash.quazio.core.ui.res.cal_dial_24
+import io.github.nullbrash.quazio.core.ui.res.cal_next_day
 import io.github.nullbrash.quazio.core.ui.res.cal_no_events
+import io.github.nullbrash.quazio.core.ui.res.cal_prev_day
 import io.github.nullbrash.quazio.core.ui.res.cal_today
 import io.github.nullbrash.quazio.core.ui.res.cal_tomorrow
 import io.github.nullbrash.quazio.core.ui.res.cal_view_day
@@ -86,22 +88,43 @@ internal enum class CalendarView { DAY, WEEK, MONTH }
 /** Что открыть в окне события: новое (с началом [newStart]) или повторение существующего. */
 internal data class EventTarget(val eventId: String?, val instanceStart: Long?, val recurring: Boolean, val newStart: Long?)
 
+/** Память вкладки между переключениями разделов: открывается сразу, свежие события догружаются. */
+class CalendarCache {
+    internal var calendars: List<CalendarInfo> = emptyList()
+    internal var events: List<CalendarEvent> = emptyList()
+}
+
+private const val HOUR_MS = 3_600_000L
+
 /**
  * Календарь: день на циферблате + список, неделя, месяц. События — из календарей устройства
  * (своих Quazio не хранит); [jumpTo] — открыть месяц с этой датой (из финансов).
+ *
+ * В виде «день» показывается момент [cursor]: пока его не трогали, он идёт вместе с часами;
+ * стрелку тянут по кругу — время пролистывается вперёд и назад, через полночь — на другой день.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CalendarScreen(source: CalendarSource, prefs: CalendarPrefs, jumpTo: LocalDate? = null, onJumpHandled: () -> Unit = {}) {
+fun CalendarScreen(
+    source: CalendarSource,
+    prefs: CalendarPrefs,
+    jumpTo: LocalDate? = null,
+    onJumpHandled: () -> Unit = {},
+    cache: CalendarCache = remember { CalendarCache() },
+) {
     val zone = remember { TimeZone.currentSystemDefault() }
     val access = LocalCalendarAccess.current
     var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
     val today = millisToLocal(now, zone).date
-    var view by remember { mutableStateOf(CalendarView.DAY) }
-    var date by remember { mutableStateOf(today) }
+    // Из финансов — сразу месяц: иначе экран сначала рисовал день с циферблатом (была задержка).
+    var view by remember { mutableStateOf(if (jumpTo != null) CalendarView.MONTH else CalendarView.DAY) }
+    var date by remember { mutableStateOf(jumpTo ?: today) }
+    var cursor by remember { mutableLongStateOf(now) }
+    var live by remember { mutableStateOf(true) }
+    var forced24 by remember { mutableStateOf(false) }
     var enabled by remember { mutableStateOf(prefs.enabled && access?.granted() != false) }
-    var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
-    var events by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
+    var calendars by remember { mutableStateOf(cache.calendars) }
+    var events by remember { mutableStateOf(cache.events) }
     var dial24 by remember { mutableStateOf(prefs.dial24) }
     var target by remember { mutableStateOf<EventTarget?>(null) }
     var reload by remember { mutableStateOf(0) }
@@ -120,11 +143,32 @@ fun CalendarScreen(source: CalendarSource, prefs: CalendarPrefs, jumpTo: LocalDa
             now = Clock.System.now().toEpochMilliseconds()
         }
     }
+    LaunchedEffect(now) { if (live) cursor = now }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { reload++ }
 
+    fun backToNow() {
+        cursor = now
+        live = true
+        forced24 = false
+        date = today
+    }
+    /** Другой день — то же время суток; не сегодня — сутки целиком (решение по фазе 2). */
+    fun openDay(d: LocalDate) {
+        if (d == today) backToNow() else {
+            val timeOfDay = now - today.startMillis(zone)
+            cursor = d.startMillis(zone) + timeOfDay
+            live = false
+            forced24 = true
+            date = d
+        }
+        view = CalendarView.DAY
+    }
+
+    val dayDate = millisToLocal(cursor, zone).date
     val sunday = prefs.weekStartsSunday
+    // День — двое суток: окно 12 часов от стрелки заходит в завтрашний день.
     val (from, to) = when (view) {
-        CalendarView.DAY -> date.startMillis(zone) to maxOf(date.nextDay().startMillis(zone), if (date == today) now + 12 * 3_600_000L else 0L)
+        CalendarView.DAY -> dayDate.startMillis(zone) to dayDate.plus(DatePeriod(days = 2)).startMillis(zone)
         CalendarView.WEEK -> weekStart(date, sunday).let { it.startMillis(zone) to it.plus(DatePeriod(days = 7)).startMillis(zone) }
         CalendarView.MONTH -> monthGridStart(date, sunday).let { it.startMillis(zone) to it.plus(DatePeriod(days = 42)).startMillis(zone) }
     }
@@ -136,6 +180,8 @@ fun CalendarScreen(source: CalendarSource, prefs: CalendarPrefs, jumpTo: LocalDa
         }
         calendars = cals
         events = evs
+        cache.calendars = cals
+        cache.events = evs
     }
 
     if (!enabled) {
@@ -153,34 +199,47 @@ fun CalendarScreen(source: CalendarSource, prefs: CalendarPrefs, jumpTo: LocalDa
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { date = shift(date, view, -1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
-                Text(title(date, view, sunday), style = MaterialTheme.typography.titleLarge, maxLines = 1)
-                IconButton(onClick = { date = shift(date, view, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
+                if (view == CalendarView.DAY) {
+                    // В «дне» стрелки переключения — внизу у циферблата (пожелание пользователя).
+                    Text(title(dayDate, view, sunday), style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+                } else {
+                    IconButton(onClick = { date = shift(date, view, -1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
+                    Text(title(date, view, sunday), style = MaterialTheme.typography.titleLarge, maxLines = 1)
+                    IconButton(onClick = { date = shift(date, view, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
+                }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { date = today }) { Text(stringResource(Res.string.cal_today)) }
+                TextButton(onClick = ::backToNow) { Text(stringResource(Res.string.cal_today)) }
             }
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(CalendarView.DAY to Res.string.cal_view_day, CalendarView.WEEK to Res.string.cal_view_week, CalendarView.MONTH to Res.string.cal_view_month)
-                    .forEach { (v, label) -> FilterChip(selected = view == v, onClick = { view = v }, label = { Text(stringResource(label)) }) }
+                    .forEach { (v, label) ->
+                        FilterChip(selected = view == v, onClick = { if (v == CalendarView.DAY) openDay(if (view == CalendarView.DAY) dayDate else date) else { date = if (view == CalendarView.DAY) dayDate else date; view = v } }, label = { Text(stringResource(label)) })
+                    }
             }
             val calendarName = calendars.associate { it.id to it.name }
             val open: (CalendarEvent) -> Unit = { e -> target = EventTarget(e.eventId, e.instanceStart, e.recurring, null) }
             when (view) {
-                CalendarView.DAY -> DayView(
-                    date, today, now, zone, events, calendarName, dial24 && date == today || date != today,
-                    showToggle = date == today,
-                    onToggle = { dial24 = it; prefs.dial24 = it },
-                    onOpen = open,
-                )
-                CalendarView.WEEK -> WeekView(weekStart(date, sunday), today, zone, events, onDay = { date = it; view = CalendarView.DAY }, onOpen = open)
-                CalendarView.MONTH -> MonthView(date, today, zone, events, sunday, onDay = { date = it; view = CalendarView.DAY })
+                CalendarView.DAY -> {
+                    val full24 = dial24 || forced24
+                    DayView(
+                        dayDate, today, cursor, live, zone, events, calendarName, full24,
+                        onToggle = { dial24 = it; prefs.dial24 = it; forced24 = false },
+                        onShiftDay = { n -> openDay(dayDate.plus(DatePeriod(days = n))) },
+                        // 12 часов — 2 минуты на градус, сутки — 4.
+                        onDrag = { deg -> cursor += (deg * (if (full24) 4f else 2f) * 60_000f).toLong(); live = false },
+                        onCenterTap = ::backToNow,
+                        onOpen = open,
+                    )
+                }
+                CalendarView.WEEK -> WeekView(weekStart(date, sunday), today, zone, events, onDay = ::openDay, onOpen = open)
+                CalendarView.MONTH -> MonthView(date, today, zone, events, sunday, onDay = ::openDay)
             }
         }
         FloatingActionButton(
             onClick = {
-                // Новое событие — ближайший полный час (сегодня) или 9:00 выбранного дня.
-                val start = if (date == today) (now / 3_600_000L + 1) * 3_600_000L else date.startMillis(zone) + 9 * 3_600_000L
-                target = EventTarget(null, null, false, start)
+                // Новое событие — ближайший полный час от показанного времени.
+                val base = if (view == CalendarView.DAY) cursor else maxOf(now, date.startMillis(zone) + 9 * HOUR_MS)
+                target = EventTarget(null, null, false, (base / HOUR_MS + 1) * HOUR_MS)
             },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) { Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.cal_add_event)) }
@@ -211,22 +270,27 @@ private fun monthGridStart(d: LocalDate, sunday: Boolean): LocalDate = weekStart
 private fun DayView(
     date: LocalDate,
     today: LocalDate,
-    now: Long,
+    cursor: Long,
+    live: Boolean,
     zone: TimeZone,
     events: List<CalendarEvent>,
     calendarName: Map<String, String>,
     full24: Boolean,
-    showToggle: Boolean,
     onToggle: (Boolean) -> Unit,
+    onShiftDay: (Int) -> Unit,
+    onDrag: (Float) -> Unit,
+    onCenterTap: () -> Unit,
     onOpen: (CalendarEvent) -> Unit,
 ) {
     val dayEvents = events.filter { it.occursOn(date, zone) }.sortedWith(compareBy({ !it.allDay }, { it.start }))
-    val layout = DialLayouts.layout(
+    val computed = DialLayouts.layout(
         if (full24) DialMode.DAY_24 else DialMode.SLIDING_12,
-        events, now, date.startMillis(zone), date.nextDay().startMillis(zone),
+        events, cursor, date.startMillis(zone), date.nextDay().startMillis(zone),
         minuteOfDay = { t -> millisToLocal(t, zone).let { it.hour * 60 + it.minute } },
     )
-    val nowDt = millisToLocal(now, zone)
+    // «Осталось до следующего» — только про настоящее «сейчас», не про пролистанное время.
+    val layout = if (live) computed else computed.copy(untilNext = null)
+    val at = millisToLocal(cursor, zone)
     val allDayText = stringResource(Res.string.cal_all_day)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
         item {
@@ -241,24 +305,31 @@ private fun DayView(
             Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
                 DayDial(
                     layout = layout,
-                    centerTop = if (date == today) hm(nowDt) else "${date.day}.${(date.month.ordinal + 1).toString().padStart(2, '0')}",
-                    centerBottom = if (date == today) "${date.day}.${date.month.ordinal + 1}" else WEEKDAYS_SHORT[date.dayOfWeek.ordinal],
+                    centerTop = hm(at),
+                    centerBottom = if (date == today) "${date.day}.${date.month.ordinal + 1}" else "${WEEKDAYS_SHORT[date.dayOfWeek.ordinal]} ${date.day}.${date.month.ordinal + 1}",
                     untilNextText = layout.untilNext?.let { hoursMinutes(it.minutes) },
                     tomorrowText = stringResource(Res.string.cal_tomorrow),
                     description = stringResource(Res.string.cal_dial),
                     modifier = Modifier.widthIn(max = 380.dp).fillMaxWidth(),
+                    onDrag = onDrag,
+                    onCenterTap = onCenterTap,
                 )
             }
         }
-        if (showToggle) item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        // Переключение дней — слева и справа от «12 ч / 24 ч», над списком (пожелание пользователя).
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onShiftDay(-1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(Res.string.cal_prev_day)) }
+                Spacer(Modifier.weight(1f))
                 FilterChip(selected = !full24, onClick = { onToggle(false) }, label = { Text(stringResource(Res.string.cal_dial_12)) })
                 Spacer(Modifier.size(8.dp))
                 FilterChip(selected = full24, onClick = { onToggle(true) }, label = { Text(stringResource(Res.string.cal_dial_24)) })
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { onShiftDay(1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(Res.string.cal_next_day)) }
             }
         }
-        item { HorizontalDivider(Modifier.padding(top = 8.dp)) }
-        if (dayEvents.isEmpty()) item {
+        item { HorizontalDivider() }
+        if (dayEvents.none { !it.allDay }) item {
             Text(stringResource(Res.string.cal_no_events), modifier = Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
         }
         // События на весь день — чипами над циферблатом; в списке — только со временем.

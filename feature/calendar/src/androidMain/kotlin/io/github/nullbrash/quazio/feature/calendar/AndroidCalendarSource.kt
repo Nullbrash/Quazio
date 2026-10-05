@@ -213,23 +213,6 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
         return draft.copy(reminderMinutes = reminders(eventId))
     }
 
-    override fun eventColors(calendarId: String): List<EventColor> {
-        val (account, type) = cr.query(
-            ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId.toLong()),
-            arrayOf(Calendars.ACCOUNT_NAME, Calendars.ACCOUNT_TYPE), null, null, null,
-        ).use { c -> if (c == null || !c.moveToFirst()) return emptyList() else c.str(0) to c.str(1) }
-        return cr.query(
-            CalendarContract.Colors.CONTENT_URI,
-            arrayOf(CalendarContract.Colors.COLOR_KEY, CalendarContract.Colors.COLOR),
-            "${CalendarContract.Colors.ACCOUNT_NAME} = ? AND ${CalendarContract.Colors.ACCOUNT_TYPE} = ? AND ${CalendarContract.Colors.COLOR_TYPE} = ?",
-            arrayOf(account.orEmpty(), type.orEmpty(), CalendarContract.Colors.TYPE_EVENT.toString()),
-            null,
-        ).use { c ->
-            c ?: return emptyList()
-            buildList { while (c.moveToNext()) add(EventColor(c.getString(0), c.getInt(1).toLong() and 0xFFFFFFFFL)) }
-        }
-    }
-
     private fun exceptionUri(eventId: String) = ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, eventId.toLong())
 
     private fun eventValues(d: EventDraft) = ContentValues().apply {

@@ -41,6 +41,7 @@ import io.github.nullbrash.quazio.core.ui.res.loading
 import io.github.nullbrash.quazio.core.ui.res.nav_calendar
 import io.github.nullbrash.quazio.core.ui.res.nav_finance
 import io.github.nullbrash.quazio.core.ui.res.nav_settings
+import io.github.nullbrash.quazio.core.ui.screens.calendar.CalendarCache
 import io.github.nullbrash.quazio.core.ui.screens.calendar.CalendarScreen
 import io.github.nullbrash.quazio.core.ui.screens.finance.FinanceScreen
 import kotlinx.datetime.LocalDate
@@ -114,6 +115,8 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
     var current by rememberSaveable { mutableStateOf(Destination.FINANCE) }
     // Нажатие на месяц в финансах — этот месяц в календаре (пожелание пользователя).
     var calendarJump by remember { mutableStateOf<LocalDate?>(null) }
+    // События календаря помнятся между переключениями разделов — вкладка открывается без пустого кадра.
+    val calendarCache = remember { CalendarCache() }
     val destinations = Destination.entries.filter { it != Destination.CALENDAR || services.calendar != null }
     val openCalendar: (LocalDate) -> Unit = { calendarJump = it; current = Destination.CALENDAR }
     // Прислали текст «В учёт Quazio» — его разбирают финансы.
@@ -143,7 +146,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                 },
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
-                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar)
+                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache)
                 }
             }
 
@@ -160,7 +163,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                             )
                         }
                     }
-                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar) }
+                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache) }
                 }
             }
         }
@@ -176,6 +179,7 @@ private fun DestinationContent(
     calendarJump: LocalDate?,
     onJumpHandled: () -> Unit,
     openCalendar: (LocalDate) -> Unit,
+    calendarCache: CalendarCache,
 ) {
     val screen: @Composable () -> Unit = {
         when (destination) {
@@ -183,7 +187,7 @@ private fun DestinationContent(
             Destination.CALENDAR -> {
                 val source = services.calendar
                 val prefs = services.calendarPrefs
-                if (source != null && prefs != null) CalendarScreen(source, prefs, calendarJump, onJumpHandled)
+                if (source != null && prefs != null) CalendarScreen(source, prefs, calendarJump, onJumpHandled, calendarCache)
             }
             Destination.SETTINGS -> SettingsScreen(versionName, services, deviceAuth)
         }

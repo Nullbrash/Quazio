@@ -60,7 +60,6 @@ import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.cal_add_reminder
 import io.github.nullbrash.quazio.core.ui.res.cal_all_day
 import io.github.nullbrash.quazio.core.ui.res.cal_calendar
-import io.github.nullbrash.quazio.core.ui.res.cal_color_calendar
 import io.github.nullbrash.quazio.core.ui.res.cal_delete_confirm
 import io.github.nullbrash.quazio.core.ui.res.cal_description
 import io.github.nullbrash.quazio.core.ui.res.cal_dial
@@ -99,7 +98,6 @@ import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
 import io.github.nullbrash.quazio.feature.calendar.CalendarSource
 import io.github.nullbrash.quazio.feature.calendar.DialLayouts
 import io.github.nullbrash.quazio.feature.calendar.DialMode
-import io.github.nullbrash.quazio.feature.calendar.EventColor
 import io.github.nullbrash.quazio.feature.calendar.EventDraft
 import io.github.nullbrash.quazio.feature.calendar.Repeat
 import io.github.nullbrash.quazio.feature.calendar.RepeatKind
@@ -170,8 +168,9 @@ internal fun EventEditor(
     var reminders by remember { mutableStateOf(listOf<Int>()) }
     var location by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    // Цвет события в Quazio не выбирается (у календарей свои цвета — решение пользователя);
+    // назначенный в Google сохраняется при правке как был.
     var colorKey by remember { mutableStateOf<String?>(null) }
-    var colors by remember { mutableStateOf<List<EventColor>>(emptyList()) }
     var timeZoneId by remember { mutableStateOf(zone.id) }
     var error by remember { mutableStateOf<String?>(null) }
     var askScope by remember { mutableStateOf<(suspend (Boolean) -> Unit)?>(null) }
@@ -195,11 +194,6 @@ internal fun EventEditor(
         colorKey = d.colorKey
         timeZoneId = d.timeZone
         loaded = true
-    }
-    LaunchedEffect(calendarId) {
-        val id = calendarId ?: return@LaunchedEffect
-        colors = withContext(Dispatchers.IO) { source.eventColors(id) }
-        if (colors.none { it.key == colorKey }) colorKey = null
     }
     if (!loaded) return
 
@@ -292,7 +286,7 @@ internal fun EventEditor(
                 if (!allDay) {
                     val s = start.millis(zone)
                     val preview = CalendarEvent("preview", calendarId.orEmpty(), title, s, s + durationMin * MIN, false, null,
-                        colors.firstOrNull { it.key == colorKey }?.color ?: calendars.firstOrNull { it.id == calendarId }?.color, null, false, s)
+                        calendars.firstOrNull { it.id == calendarId }?.color, null, false, s)
                     val dayStart = start.date.startMillis(zone)
                     DayDial(
                         DialLayouts.layout(DialMode.DAY_24, listOf(preview), s, dayStart, dayStart + 1440 * MIN, { t -> millisToLocal(t, zone).let { it.hour * 60 + it.minute } }),
@@ -314,19 +308,6 @@ internal fun EventEditor(
             }
 
             HorizontalDivider()
-            if (colors.isNotEmpty()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { colorKey = null }) { Text(stringResource(Res.string.cal_color_calendar)) }
-                    colors.forEach { c ->
-                        Box(
-                            Modifier.size(28.dp).clip(CircleShape).background(colorOf(c.color))
-                                .border(if (c.key == colorKey) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                .clickable { colorKey = c.key },
-                        )
-                    }
-                }
-            }
-
             Picker(stringResource(Res.string.cal_calendar), writable.firstOrNull { it.id == calendarId }?.name ?: "—") { dismiss ->
                 writable.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, leadingIcon = { ColorDot(c.color) }, onClick = { calendarId = c.id; dismiss() }) }
             }
