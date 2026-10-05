@@ -31,6 +31,13 @@ android {
         release {
             isMinifyEnabled = false
         }
+        // Для замеров памяти: как релиз (без отладки), но подписан отладочным ключом —
+        // ставится поверх debug без потери данных. Отладочная сборка тяжелее на ~30 МБ.
+        create("bench") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
     }
 
     compileOptions {
