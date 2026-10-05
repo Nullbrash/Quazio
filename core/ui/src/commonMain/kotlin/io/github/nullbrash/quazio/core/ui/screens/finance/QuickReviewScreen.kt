@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +53,7 @@ import io.github.nullbrash.quazio.core.ui.res.quick_check_ok
 import io.github.nullbrash.quazio.core.ui.res.quick_create_savings
 import io.github.nullbrash.quazio.core.ui.res.quick_edit
 import io.github.nullbrash.quazio.core.ui.res.quick_found
+import io.github.nullbrash.quazio.core.ui.res.quick_make_op
 import io.github.nullbrash.quazio.core.ui.res.quick_ops
 import io.github.nullbrash.quazio.core.ui.res.quick_pick_account
 import io.github.nullbrash.quazio.core.ui.res.quick_save
@@ -66,6 +68,7 @@ import io.github.nullbrash.quazio.core.ui.res.quick_word_debt
 import io.github.nullbrash.quazio.core.ui.res.quick_word_from
 import io.github.nullbrash.quazio.core.ui.res.quick_word_to
 import io.github.nullbrash.quazio.engine.quickinput.QuickDraft
+import io.github.nullbrash.quazio.engine.quickinput.QuickKind
 import io.github.nullbrash.quazio.engine.quickinput.QuickLine
 import io.github.nullbrash.quazio.engine.quickinput.SkipReason
 import io.github.nullbrash.quazio.feature.finance.FinAccount
@@ -76,6 +79,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -104,7 +109,13 @@ internal fun QuickReviewScreen(
 ) {
     val scope = rememberCoroutineScope()
     val zone = remember { currentZone() }
-    val ops = remember { lines.mapIndexed { i, line -> (line as? QuickLine.Operation)?.let { ReviewOp(it.draft, prefills[i]!!) } } }
+    val now = remember { localDateTime(nowMillis(), zone.id) }
+    // По индексам строк; пропущенная строка получает операцию, если её «сделали операцией».
+    val ops = remember {
+        mutableStateListOf<ReviewOp?>().apply {
+            addAll(lines.mapIndexed { i, line -> (line as? QuickLine.Operation)?.let { ReviewOp(it.draft, prefills[i]!!) } })
+        }
+    }
     // Счета меняются, если «Накопления» создали прямо отсюда.
     var accounts by remember { mutableStateOf(data.accounts.filter { !it.archived }) }
     var accountCreated by remember { mutableStateOf(false) }
@@ -130,12 +141,29 @@ internal fun QuickReviewScreen(
         }
     }
 
+    /** Пропущенная строка → окно операции с тем, что из неё известно: сумма, знак, текст. */
+    fun fromSkipped(line: QuickLine.Skipped): EditorPrefill {
+        val signed = line.signedMinor
+        val income = signed != null && signed > 0
+        val now = localDateTime(nowMillis(), zone.id)
+        return EditorPrefill(
+            kind = if (income) EditorKind.INCOME else EditorKind.EXPENSE, sign = if (income) 1 else -1,
+            amountMinor = signed?.let { kotlin.math.abs(it) }, finAccountId = own.firstOrNull()?.id,
+            description = line.text.lineSequence().first().trim().trimEnd('.'),
+            dateTime = LocalDateTime(now.date, LocalTime(now.hour, now.minute)),
+        )
+    }
+
     editing?.let { index ->
-        val op = ops[index]!!
+        val existing = ops[index]
         TransactionEditor(
-            services = services, data = current, txnId = null, prefill = op.prefill,
+            services = services, data = current, txnId = null,
+            prefill = existing?.prefill ?: fromSkipped(lines[index] as QuickLine.Skipped),
             onDraft = { draft ->
-                op.prefill = draft.toPrefill(::isDebt)
+                val p = draft.toPrefill(::isDebt)
+                if (existing != null) existing.prefill = p
+                // Сделано вручную, не разбором: запоминать для слова нечего (keyWord = null).
+                else ops[index] = ReviewOp(QuickDraft(QuickKind.EXPENSE, 1, now.date), p)
                 editing = null
             },
             onClose = { editing = null },
@@ -196,9 +224,9 @@ internal fun QuickReviewScreen(
         saveError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             itemsIndexed(lines) { i, line ->
-                when (line) {
-                    is QuickLine.Operation -> {
-                        val op = ops[i]!!
+                val op = ops[i]
+                when {
+                    op != null -> {
                         OperationCard(
                             source = line.text, prefill = op.prefill, include = op.include,
                             own = own, debts = debts, categoryPath = categoryPath, createSavings = createSavings,
@@ -207,7 +235,7 @@ internal fun QuickReviewScreen(
                             onEdit = { editing = i },
                         )
                     }
-                    is QuickLine.Total -> {
+                    line is QuickLine.Total -> {
                         val written = line.text.trim()
                         val ok = line.matches
                         Text(
@@ -217,7 +245,7 @@ internal fun QuickReviewScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                     }
-                    is QuickLine.Balance -> {
+                    line is QuickLine.Balance -> {
                         val account = accountOfBalance(i, line)
                         BalanceCard(
                             amount = line.amountMinor, account = accounts.firstOrNull { it.id == account },
@@ -225,7 +253,7 @@ internal fun QuickReviewScreen(
                             adjust = adjust[i] == true, onAdjust = { adjust[i] = it }, onAccount = { balanceAccount[i] = it },
                         )
                     }
-                    is QuickLine.Skipped -> Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    line is QuickLine.Skipped -> Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Text(line.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                         Text(
                             stringResource(
@@ -238,6 +266,8 @@ internal fun QuickReviewScreen(
                             ),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        // Решение разбора можно оспорить: строка становится операцией, заполненной из текста.
+                        TextButton(onClick = { editing = i }) { Text(stringResource(Res.string.quick_make_op)) }
                     }
                 }
                 HorizontalDivider()

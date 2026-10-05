@@ -108,6 +108,24 @@ class QuickInputUiTest {
     }
 
     @Test
+    fun skippedLineCanBeTurnedIntoOperation() = runComposeUiTest {
+        incoming.offer("кофе 200\nЗа 1-4-ое по 500р не брал\n+ 2 000р.")
+        setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Сохранить (1)")).fetchSemanticsNodes().isNotEmpty() }
+        // Пользователь не согласен с разбором: «не брал» — тоже движение в его учёте.
+        onNodeWithText("Сделать операцией").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Черновик")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Сохранить").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Сохранить (2)")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Сохранить (2)").performClick()
+        waitUntil(timeoutMillis = 10_000) { all().size == 2 }
+
+        val made = all().single { it.kind == TxnKind.INCOME }
+        assertEquals(200_000, made.amount.minor)
+        assertEquals("За 1-4-ое по 500р не брал", made.description)
+    }
+
+    @Test
     fun textWithoutOperationsSaysSo() = runComposeUiTest {
         incoming.offer("Всем спасибо, всем пока!")
         setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }

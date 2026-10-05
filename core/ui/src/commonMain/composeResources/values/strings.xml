@@ -123,6 +123,7 @@
         <item quantity="other">%1$d операции</item>
     </plurals>
     <string name="quick_edit">Изменить</string>
+    <string name="quick_make_op">Сделать операцией</string>
     <string name="quick_word_from">из</string>
     <string name="quick_word_to">в</string>
     <string name="quick_word_account">счёт</string>
