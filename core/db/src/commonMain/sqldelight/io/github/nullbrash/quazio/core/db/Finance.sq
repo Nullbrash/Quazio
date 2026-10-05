@@ -1,0 +1,143 @@
+-- ===== Счета =====
+
+insertFinAccount:
+INSERT INTO fin_account(id, account_id, name, type, currency, opening_balance_minor, credit_limit_minor, include_in_total, person_tag_id, sort_key, hlc)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateFinAccount:
+UPDATE fin_account SET name = :name, type = :type, opening_balance_minor = :opening, credit_limit_minor = :creditLimit,
+    include_in_total = :includeInTotal, person_tag_id = :personTagId, archived = :archived, hlc = :hlc
+WHERE id = :id;
+
+setFinAccountDeleted:
+UPDATE fin_account SET deleted = 1, hlc = :hlc WHERE id = :id;
+
+finAccountById:
+SELECT * FROM fin_account WHERE id = ?;
+
+-- Баланс: начальный остаток + доходы − расходы ± корректировки − ушедшие переводы + пришедшие.
+finAccountsWithBalance:
+SELECT a.*,
+    a.opening_balance_minor
+    + coalesce((SELECT sum(CASE t.kind
+            WHEN 'income' THEN t.amount_minor
+            WHEN 'expense' THEN -t.amount_minor
+            WHEN 'adjustment' THEN t.amount_minor
+            WHEN 'transfer' THEN -t.amount_minor END)
+        FROM txn t WHERE t.fin_account_id = a.id AND t.deleted = 0), 0)
+    + coalesce((SELECT sum(t.amount_minor) FROM txn t
+        WHERE t.to_fin_account_id = a.id AND t.kind = 'transfer' AND t.deleted = 0), 0) AS balance_minor
+FROM fin_account a
+WHERE a.account_id = ? AND a.deleted = 0
+ORDER BY a.archived, a.sort_key, a.name;
+
+-- ===== Категории =====
+
+insertCategory:
+INSERT INTO category(id, account_id, parent_id, name, kind, color, sort_key, hlc) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateCategory:
+UPDATE category SET name = :name, parent_id = :parentId, color = :color, sort_key = :sortKey, hlc = :hlc WHERE id = :id;
+
+setCategoryDeleted:
+UPDATE category SET deleted = 1, hlc = :hlc WHERE id = :id;
+
+categoryById:
+SELECT * FROM category WHERE id = ?;
+
+categoriesOf:
+SELECT * FROM category WHERE account_id = ? AND deleted = 0 ORDER BY sort_key, name;
+
+categoryCount:
+SELECT count(*) FROM category WHERE account_id = ?;
+
+-- ===== Магазины =====
+
+insertMerchant:
+INSERT INTO merchant(id, account_id, name, normalized, default_category_id, hlc) VALUES (?, ?, ?, ?, ?, ?);
+
+merchantByNormalized:
+SELECT * FROM merchant WHERE account_id = ? AND normalized = ? AND deleted = 0 LIMIT 1;
+
+merchantById:
+SELECT * FROM merchant WHERE id = ?;
+
+merchantsMatching:
+SELECT * FROM merchant WHERE account_id = :accountId AND deleted = 0 AND normalized LIKE :pattern ESCAPE '\'
+ORDER BY name LIMIT :limit;
+
+-- ===== Метки =====
+
+insertTag:
+INSERT INTO tag(id, account_id, name, kind, hlc) VALUES (?, ?, ?, ?, ?);
+
+tagsOf:
+SELECT * FROM tag WHERE account_id = ? AND deleted = 0 ORDER BY kind, name;
+
+tagById:
+SELECT * FROM tag WHERE id = ?;
+
+-- ===== Операции =====
+
+insertTxn:
+INSERT INTO txn(id, account_id, kind, amount_minor, currency, fin_account_id, to_fin_account_id, category_id, merchant_id,
+    occurred_at, tz, description, note, source, dedup_key, hlc)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateTxn:
+UPDATE txn SET kind = :kind, amount_minor = :amount, fin_account_id = :finAccountId, to_fin_account_id = :toFinAccountId,
+    category_id = :categoryId, merchant_id = :merchantId, occurred_at = :occurredAt, tz = :tz,
+    description = :description, note = :note, hlc = :hlc
+WHERE id = :id;
+
+-- Есть ли у счёта операции (списания или зачисления переводом).
+anyTxnOfFinAccount:
+SELECT id FROM txn WHERE (fin_account_id = :id OR to_fin_account_id = :id) AND deleted = 0 LIMIT 1;
+
+setTxnDeleted:
+UPDATE txn SET deleted = 1, hlc = :hlc WHERE id = :id;
+
+txnById:
+SELECT * FROM txn WHERE id = ?;
+
+txnsInRange:
+SELECT t.*, c.name AS category_name, m.name AS merchant_name, fa.name AS fin_account_name, ta.name AS to_fin_account_name
+FROM txn t
+LEFT JOIN category c ON c.id = t.category_id
+LEFT JOIN merchant m ON m.id = t.merchant_id
+LEFT JOIN fin_account fa ON fa.id = t.fin_account_id
+LEFT JOIN fin_account ta ON ta.id = t.to_fin_account_id
+WHERE t.account_id = :accountId AND t.deleted = 0 AND t.occurred_at >= :fromMillis AND t.occurred_at < :toMillis
+ORDER BY t.occurred_at DESC, t.id DESC;
+
+-- Только доходы и расходы: переводы и корректировки — не траты и не заработок.
+totalsInRange:
+SELECT
+    coalesce(sum(CASE WHEN kind = 'income' THEN amount_minor END), 0) AS income_minor,
+    coalesce(sum(CASE WHEN kind = 'expense' THEN amount_minor END), 0) AS expense_minor
+FROM txn
+WHERE account_id = :accountId AND deleted = 0 AND occurred_at >= :fromMillis AND occurred_at < :toMillis;
+
+-- Для автозаполнения: последняя операция с этим магазином / описанием.
+lastTxnByMerchant:
+SELECT * FROM txn WHERE account_id = ? AND merchant_id = ? AND deleted = 0 ORDER BY occurred_at DESC LIMIT 1;
+
+lastTxnByDescription:
+SELECT * FROM txn WHERE account_id = ? AND lower(description) = lower(?) AND deleted = 0 ORDER BY occurred_at DESC LIMIT 1;
+
+recentDescriptions:
+SELECT description FROM txn WHERE account_id = :accountId AND deleted = 0 AND description <> ''
+    AND lower(description) LIKE :pattern ESCAPE '\'
+GROUP BY lower(description) ORDER BY max(occurred_at) DESC LIMIT :limit;
+
+-- ===== Метки операций =====
+
+upsertTxnTag:
+INSERT OR REPLACE INTO txn_tag(id, account_id, txn_id, tag_id, hlc, deleted) VALUES (?, ?, ?, ?, ?, ?);
+
+tagIdsOfTxn:
+SELECT tag_id FROM txn_tag WHERE txn_id = ? AND deleted = 0;
+
+tagsOfTxns:
+SELECT tt.txn_id, tg.* FROM txn_tag tt JOIN tag tg ON tg.id = tt.tag_id
+WHERE tt.deleted = 0 AND tg.deleted = 0 AND tt.txn_id IN ?;

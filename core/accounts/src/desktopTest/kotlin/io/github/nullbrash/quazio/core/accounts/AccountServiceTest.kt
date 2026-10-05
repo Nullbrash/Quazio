@@ -18,7 +18,8 @@ class AccountServiceTest {
 
     private fun open(): Pair<JdbcSqliteDriver, AccountService> {
         val driver = JdbcSqliteDriver(url, java.util.Properties(), QuazioDatabase.Schema)
-        return driver to AccountService(QuazioDatabase(driver)) { wall }
+        val db = QuazioDatabase(driver)
+        return driver to AccountService(db, DeviceClock(db) { wall })
     }
 
     @AfterTest

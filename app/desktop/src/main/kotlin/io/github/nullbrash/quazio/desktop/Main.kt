@@ -5,6 +5,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.github.nullbrash.quazio.core.accounts.AccountService
+import io.github.nullbrash.quazio.core.accounts.DeviceClock
+import io.github.nullbrash.quazio.feature.finance.FinanceService
 import io.github.nullbrash.quazio.core.db.DesktopDatabase
 import io.github.nullbrash.quazio.core.db.DpapiKeyStore
 import io.github.nullbrash.quazio.core.lock.AppLock
@@ -24,9 +26,11 @@ private val services: AppServices by lazy {
     val dir = dataDir()
     val db = DesktopDatabase.open(dir.resolve("quazio.db"), DpapiKeyStore(dir.resolve("db.key")))
     val lock = AppLock(System::currentTimeMillis)
+    val clock = DeviceClock(db, System::currentTimeMillis)
     SessionLockWatcher.start(onLocked = lock::lockNow)
     AppServices(
-        accounts = AccountService(db, System::currentTimeMillis),
+        accounts = AccountService(db, clock),
+        finance = FinanceService(db, clock),
         vault = PasswordVault(db, System::currentTimeMillis),
         lock = lock,
         deviceName = System.getenv("COMPUTERNAME") ?: "ПК",

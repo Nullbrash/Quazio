@@ -3,6 +3,8 @@ package io.github.nullbrash.quazio
 import android.content.Context
 import android.os.Build
 import io.github.nullbrash.quazio.core.accounts.AccountService
+import io.github.nullbrash.quazio.core.accounts.DeviceClock
+import io.github.nullbrash.quazio.feature.finance.FinanceService
 import io.github.nullbrash.quazio.core.db.AndroidDatabase
 import io.github.nullbrash.quazio.core.db.AndroidKeystoreKeyStore
 import io.github.nullbrash.quazio.core.lock.AppLock
@@ -23,8 +25,10 @@ object AppGraph {
 
     private fun create(context: Context): AppServices {
         val db = AndroidDatabase.open(context, AndroidKeystoreKeyStore(context))
+        val clock = DeviceClock(db, System::currentTimeMillis)
         return AppServices(
-            accounts = AccountService(db, System::currentTimeMillis),
+            accounts = AccountService(db, clock),
+            finance = FinanceService(db, clock),
             vault = PasswordVault(db, System::currentTimeMillis),
             lock = AppLock(System::currentTimeMillis),
             deviceName = Build.MODEL,

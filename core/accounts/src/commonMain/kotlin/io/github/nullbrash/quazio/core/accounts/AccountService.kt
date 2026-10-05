@@ -2,8 +2,6 @@ package io.github.nullbrash.quazio.core.accounts
 
 import io.github.nullbrash.quazio.core.db.ChangeLog
 import io.github.nullbrash.quazio.core.db.QuazioDatabase
-import io.github.nullbrash.quazio.core.model.Hlc
-import io.github.nullbrash.quazio.core.model.HlcClock
 import io.github.nullbrash.quazio.core.model.Uuid7
 
 enum class AccessLevel(val dbValue: String) {
@@ -26,22 +24,11 @@ data class Account(val id: String, val name: String, val createdAt: Long, val ac
  */
 class AccountService(
     private val db: QuazioDatabase,
-    private val wallMillis: () -> Long,
+    private val clock: DeviceClock,
 ) {
     private val changeLog = ChangeLog(db)
 
-    val deviceId: String
-    private val clock: HlcClock
-
-    init {
-        deviceId = db.appStateQueries.get(KEY_DEVICE_ID).executeAsOneOrNull() ?: Uuid7.generate(wallMillis()).also {
-            db.appStateQueries.put(KEY_DEVICE_ID, it)
-        }
-        clock = HlcClock(deviceId, wallMillis)
-        // Продолжить с последней метки: если системные часы отстали после перезапуска,
-        // новые изменения всё равно должны оказаться «позже» уже записанных.
-        db.syncOutboxQueries.latestHlc().executeAsOneOrNull()?.hlc?.let { clock.receive(Hlc.parse(it)) }
-    }
+    val deviceId: String get() = clock.deviceId
 
     /** Первый запуск: запись об устройстве и первый аккаунт. Повторный вызов ничего не меняет. */
     fun initialize(deviceName: String, platform: String, firstAccountName: String): Account = db.transactionWithResult {
@@ -78,7 +65,7 @@ class AccountService(
 
     private fun createInTransaction(name: String): Account {
         val clean = validName(name)
-        val now = wallMillis()
+        val now = clock.wallMillis()
         val id = Uuid7.generate(now)
         val hlc = clock.now()
         db.accountQueries.insert(id, clean, now, hlc.toString())
@@ -106,7 +93,6 @@ class AccountService(
 
     private companion object {
         const val TABLE = "account"
-        const val KEY_DEVICE_ID = "device_id"
         const val KEY_CURRENT_ACCOUNT = "current_account_id"
         const val MAX_NAME = 50
     }
