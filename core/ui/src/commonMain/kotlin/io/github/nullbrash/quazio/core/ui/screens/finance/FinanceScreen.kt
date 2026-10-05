@@ -65,6 +65,7 @@ import io.github.nullbrash.quazio.core.ui.res.fin_export_csv
 import io.github.nullbrash.quazio.core.ui.res.fin_export_done
 import io.github.nullbrash.quazio.core.ui.res.fin_export_failed
 import io.github.nullbrash.quazio.core.ui.res.fin_more
+import io.github.nullbrash.quazio.core.ui.res.fin_accounts_order
 import io.github.nullbrash.quazio.core.ui.res.quick_none
 import io.github.nullbrash.quazio.engine.quickinput.QuickDraft
 import io.github.nullbrash.quazio.engine.quickinput.QuickLine
@@ -108,6 +109,7 @@ private sealed interface FinanceView {
     data class Editor(val txnId: String?) : FinanceView
     data object Categories : FinanceView
     data object Tags : FinanceView
+    data object AccountsOrder : FinanceView
     /** Одна операция из быстрого ввода — сразу окно операции с заполненными полями. */
     data class QuickEditor(val original: QuickDraft, val prefill: EditorPrefill) : FinanceView
     /** Пост из нескольких строк — список черновиков. */
@@ -191,6 +193,10 @@ fun FinanceScreen(services: AppServices) {
             view = FinanceView.Main
             reload++
         }
+        FinanceView.AccountsOrder -> AccountsOrderScreen(services, d.accountId, d.accounts) {
+            view = FinanceView.Main
+            reload++
+        }
         is FinanceView.QuickEditor -> TransactionEditor(
             services = services, data = d, txnId = null, prefill = v.prefill,
             onDraft = { draft ->
@@ -216,6 +222,7 @@ fun FinanceScreen(services: AppServices) {
                 onNewAccount = { newAccountDialog = true },
                 onCategories = { view = FinanceView.Categories },
                 onTags = { view = FinanceView.Tags },
+                onAccountsOrder = { view = FinanceView.AccountsOrder },
                 onExport = fileSaver?.let { saver ->
                     {
                         scope.launch {
@@ -276,6 +283,7 @@ private fun FinanceMain(
     onNewAccount: () -> Unit,
     onCategories: () -> Unit,
     onTags: () -> Unit,
+    onAccountsOrder: () -> Unit,
     onExport: (() -> Unit)?,
 ) {
     val colors = data.categories.associate { it.id to it.color }
@@ -298,6 +306,7 @@ private fun FinanceMain(
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text(stringResource(Res.string.fin_categories)) }, onClick = { menu = false; onCategories() })
                         DropdownMenuItem(text = { Text(stringResource(Res.string.fin_tags)) }, onClick = { menu = false; onTags() })
+                        DropdownMenuItem(text = { Text(stringResource(Res.string.fin_accounts_order)) }, onClick = { menu = false; onAccountsOrder() })
                         if (onExport != null) {
                             DropdownMenuItem(text = { Text(stringResource(Res.string.fin_export_csv)) }, onClick = { menu = false; onExport() })
                         }

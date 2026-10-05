@@ -243,6 +243,21 @@ class FinanceServiceTest {
     }
 
     @Test
+    fun accountsCanBeReorderedByHand() {
+        val card = finance.createAccount(accountId, "Карта", FinAccountType.CARD)
+        val piggy = finance.createAccount(accountId, "Копилка", FinAccountType.SAVINGS)
+        // Пока порядок не задавали — по имени.
+        assertEquals(listOf("Карта", "Копилка", "Наличные"), finance.accounts(accountId).map { it.name })
+        finance.reorderAccounts(accountId, listOf(piggy, cash().id, card))
+        assertEquals(listOf("Копилка", "Наличные", "Карта"), finance.accounts(accountId).map { it.name })
+        // Новый счёт после ручной сортировки — в конец, а не в начало.
+        finance.createAccount(accountId, "Бонусы", FinAccountType.BONUS)
+        assertEquals(listOf("Копилка", "Наличные", "Карта", "Бонусы"), finance.accounts(accountId).map { it.name })
+        // Порядок идёт через журнал изменений (для синхронизации).
+        assertTrue(db.syncOutboxQueries.forAccount(accountId).executeAsList().any { it.field_ == "sort_key" && it.value_ == "0000" })
+    }
+
+    @Test
     fun invalidDraftsAreRejected() {
         assertFailsWith<IllegalArgumentException> { expense(0, cash().id) }
         assertFailsWith<IllegalArgumentException> {

@@ -110,6 +110,10 @@
     <string name="fin_debt_return_to_org">Верну %1$s</string>
     <string name="fin_tags">Метки</string>
     <string name="fin_more">Ещё</string>
+    <string name="fin_accounts_order">Порядок счетов</string>
+    <string name="fin_accounts_order_hint">Так счета идут в списке и при выборе счёта. Архивные — всегда в конце.</string>
+    <string name="fin_move_up">Выше</string>
+    <string name="fin_move_down">Ниже</string>
     <string name="quick_title">Быстрый ввод</string>
     <string name="quick_draft">Черновик</string>
     <string name="quick_save">Сохранить (%1$d)</string>

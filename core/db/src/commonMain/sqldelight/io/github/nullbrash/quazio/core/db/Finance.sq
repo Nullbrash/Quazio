@@ -9,6 +9,9 @@ UPDATE fin_account SET name = :name, type = :type, opening_balance_minor = :open
     include_in_total = :includeInTotal, person_tag_id = :personTagId, archived = :archived, hlc = :hlc
 WHERE id = :id;
 
+setFinAccountSortKey:
+UPDATE fin_account SET sort_key = :sortKey, hlc = :hlc WHERE id = :id;
+
 setFinAccountDeleted:
 UPDATE fin_account SET deleted = 1, hlc = :hlc WHERE id = :id;
 

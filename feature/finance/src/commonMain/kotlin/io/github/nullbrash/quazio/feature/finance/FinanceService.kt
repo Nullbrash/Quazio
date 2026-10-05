@@ -149,12 +149,35 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         accountId: String, id: String, name: String, type: FinAccountType, opening: Long, creditLimit: Long?,
         includeInTotal: Boolean, personTagId: String?, hlc: Hlc,
     ) {
-        q.insertFinAccount(id, accountId, name, type.dbValue, "RUB", opening, creditLimit, if (includeInTotal) 1 else 0, personTagId, "", hlc.toString())
+        val sortKey = nextAccountSortKey(accountId)
+        q.insertFinAccount(id, accountId, name, type.dbValue, "RUB", opening, creditLimit, if (includeInTotal) 1 else 0, personTagId, sortKey, hlc.toString())
         changeLog.record(accountId, T_FIN_ACCOUNT, id, hlc, mapOf(
             "name" to name, "type" to type.dbValue, "currency" to "RUB", "opening_balance_minor" to opening.toString(),
             "credit_limit_minor" to creditLimit?.toString(), "include_in_total" to flag(includeInTotal),
-            "person_tag_id" to personTagId,
+            "person_tag_id" to personTagId, "sort_key" to sortKey,
         ))
+    }
+
+    /** Пока порядок не задавали — пусто (по имени); после ручной сортировки новый счёт встаёт в конец. */
+    private fun nextAccountSortKey(accountId: String): String {
+        val max = q.finAccountsWithBalance(accountId).executeAsList().mapNotNull { it.sort_key.toIntOrNull() }.maxOrNull() ?: return ""
+        return sortKeyOf(max + 1)
+    }
+
+    private fun sortKeyOf(index: Int) = index.toString().padStart(4, '0')
+
+    /** Ручной порядок счетов (как в списке); через журнал — чтобы порядок разошёлся на другие устройства. */
+    fun reorderAccounts(accountId: String, orderedIds: List<String>) = db.transaction {
+        val current = q.finAccountsWithBalance(accountId).executeAsList().associateBy { it.id }
+        var hlc: Hlc? = null
+        orderedIds.forEachIndexed { i, id ->
+            val row = requireNotNull(current[id]) { "Нет счёта $id" }
+            val key = sortKeyOf(i)
+            if (row.sort_key == key) return@forEachIndexed
+            val h = hlc ?: clock.now().also { hlc = it }
+            q.setFinAccountSortKey(key, h.toString(), id)
+            changeLog.record(accountId, T_FIN_ACCOUNT, id, h, mapOf("sort_key" to key))
+        }
     }
 
     // ===== Категории =====
