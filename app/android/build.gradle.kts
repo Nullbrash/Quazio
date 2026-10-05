@@ -45,5 +45,6 @@ kotlin {
 
 dependencies {
     implementation(projects.core.ui)
+    implementation(projects.core.accounts)
     implementation(libs.androidx.activity.compose)
 }

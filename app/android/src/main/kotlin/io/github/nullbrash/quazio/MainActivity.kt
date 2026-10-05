@@ -10,6 +10,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        setContent { QuazioApp(versionName = BuildConfig.VERSION_NAME) }
+        setContent {
+            QuazioApp(versionName = BuildConfig.VERSION_NAME, openServices = { AppGraph.services(applicationContext) })
+        }
     }
 }

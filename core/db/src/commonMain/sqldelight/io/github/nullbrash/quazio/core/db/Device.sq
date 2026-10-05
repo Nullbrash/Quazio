@@ -1,0 +1,5 @@
+insert:
+INSERT INTO device(id, name, platform) VALUES (?, ?, ?);
+
+byId:
+SELECT * FROM device WHERE id = ?;

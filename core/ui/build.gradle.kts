@@ -26,6 +26,7 @@ kotlin {
             api(libs.compose.runtime)
             api(libs.compose.foundation)
             api(libs.compose.material3)
+            api(projects.core.accounts)
             implementation(libs.compose.material.icons.core)
             implementation(libs.compose.components.resources)
         }

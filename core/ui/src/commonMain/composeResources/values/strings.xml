@@ -5,9 +5,20 @@
     <string name="nav_finance">Финансы</string>
     <string name="nav_settings">Настройки</string>
 
+    <string name="loading">Загрузка…</string>
+    <string name="error_open_data">Не удалось открыть данные: %1$s</string>
+
     <string name="finance_placeholder">Здесь будет учёт финансов</string>
+    <string name="finance_account">Аккаунт: %1$s</string>
 
     <string name="settings_about">О программе</string>
     <string name="settings_version">Версия %1$s</string>
     <string name="settings_license">Свободная программа, лицензия Apache-2.0</string>
+
+    <string name="accounts_title">Аккаунты</string>
+    <string name="accounts_add">Добавить аккаунт</string>
+    <string name="accounts_name">Имя аккаунта</string>
+    <string name="accounts_create">Создать</string>
+    <string name="accounts_default_name">Я</string>
+    <string name="action_cancel">Отмена</string>
 </resources>

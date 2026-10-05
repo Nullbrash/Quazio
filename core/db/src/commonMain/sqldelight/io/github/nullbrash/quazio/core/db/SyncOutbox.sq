@@ -1,0 +1,18 @@
+append:
+INSERT INTO sync_outbox(account_id, table_name, row_id, field, value, hlc) VALUES (?, ?, ?, ?, ?, ?);
+
+forAccount:
+SELECT * FROM sync_outbox WHERE account_id = ? ORDER BY seq;
+
+count:
+SELECT count(*) FROM sync_outbox;
+
+setFieldClock:
+INSERT OR REPLACE INTO field_clock(table_name, row_id, field, hlc) VALUES (?, ?, ?, ?);
+
+fieldClock:
+SELECT hlc FROM field_clock WHERE table_name = ? AND row_id = ? AND field = ?;
+
+-- Строки HLC сравниваются как сами метки: максимум строки = последняя метка.
+latestHlc:
+SELECT max(hlc) AS hlc FROM field_clock;

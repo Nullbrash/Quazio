@@ -1,0 +1,23 @@
+insert:
+INSERT INTO account(id, name, created_at, hlc) VALUES (?, ?, ?, ?);
+
+setName:
+UPDATE account SET name = :name, hlc = :hlc WHERE id = :id;
+
+setDeleted:
+UPDATE account SET deleted = :deleted, hlc = :hlc WHERE id = :id;
+
+active:
+SELECT * FROM account WHERE deleted = 0 ORDER BY created_at, id;
+
+byId:
+SELECT * FROM account WHERE id = ?;
+
+setAccess:
+INSERT OR REPLACE INTO account_access(account_id, level) VALUES (?, ?);
+
+accessOf:
+SELECT level FROM account_access WHERE account_id = ?;
+
+addWriter:
+INSERT OR IGNORE INTO account_writer(account_id, device_id) VALUES (?, ?);

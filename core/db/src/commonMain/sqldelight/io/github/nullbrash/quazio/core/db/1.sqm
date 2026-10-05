@@ -1,0 +1,65 @@
+-- Ядро: служебное состояние, устройства, аккаунты, журнал изменений для синхронизации.
+
+CREATE TABLE app_state (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE device (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    public_key BLOB,
+    paired_at INTEGER,
+    last_seen INTEGER
+);
+
+-- Аккаунт синхронизируется сам: его id служит и account_id его изменений.
+CREATE TABLE account (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    public_key BLOB,
+    created_at INTEGER NOT NULL,
+    hlc TEXT NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE account_access (
+    account_id TEXT NOT NULL PRIMARY KEY REFERENCES account(id),
+    level TEXT NOT NULL CHECK (level IN ('full', 'watch'))
+);
+
+CREATE TABLE account_writer (
+    account_id TEXT NOT NULL REFERENCES account(id),
+    device_id TEXT NOT NULL REFERENCES device(id),
+    PRIMARY KEY (account_id, device_id)
+);
+
+-- Каждое изменение поля синхронизируемой записи — строка здесь, в той же транзакции.
+CREATE TABLE sync_outbox (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    row_id TEXT NOT NULL,
+    field TEXT NOT NULL,
+    value TEXT,
+    hlc TEXT NOT NULL,
+    signature BLOB
+);
+
+CREATE INDEX sync_outbox_by_account ON sync_outbox(account_id, seq);
+
+-- Последняя метка каждого поля: по ней «последнее изменение побеждает» при слиянии.
+CREATE TABLE field_clock (
+    table_name TEXT NOT NULL,
+    row_id TEXT NOT NULL,
+    field TEXT NOT NULL,
+    hlc TEXT NOT NULL,
+    PRIMARY KEY (table_name, row_id, field)
+);
+
+CREATE TABLE sync_peer (
+    device_id TEXT NOT NULL PRIMARY KEY,
+    last_received_hlc TEXT,
+    last_sent_seq INTEGER NOT NULL DEFAULT 0
+);

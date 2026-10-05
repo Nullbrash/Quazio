@@ -22,7 +22,13 @@ kotlin {
 
 dependencies {
     implementation(projects.core.ui)
+    implementation(projects.core.accounts)
     implementation(compose.desktop.currentOs)
+}
+
+// Запуск из среды разработки — со своей папкой данных, не с данными установленной программы.
+tasks.withType<JavaExec>().configureEach {
+    systemProperty("quazio.dataDir", layout.buildDirectory.dir("dev-data").get().asFile.absolutePath)
 }
 
 compose.desktop {
