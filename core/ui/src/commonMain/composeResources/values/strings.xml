@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Quazio</string>
+
+    <string name="nav_finance">Финансы</string>
+    <string name="nav_settings">Настройки</string>
+
+    <string name="finance_placeholder">Здесь будет учёт финансов</string>
+
+    <string name="settings_about">О программе</string>
+    <string name="settings_version">Версия %1$s</string>
+    <string name="settings_license">Свободная программа, лицензия Apache-2.0</string>
+</resources>

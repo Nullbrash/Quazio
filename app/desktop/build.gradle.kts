@@ -28,7 +28,13 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "io.github.nullbrash.quazio.desktop.MainKt"
-        jvmArgs += "-Dquazio.version=${appVersion.name}"
+        jvmArgs += listOf(
+            "-Dquazio.version=${appVersion.name}",
+            // Отрисовка без видеокарты экономит ~100 МБ — больше всех настроек Java.
+            "-Dskiko.renderApi=SOFTWARE",
+            // Временный потолок кучи: точное значение — по замеру настоящего приложения.
+            "-Xmx256m",
+        )
 
         nativeDistributions {
             targetFormats(TargetFormat.Msi)

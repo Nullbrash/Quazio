@@ -16,6 +16,9 @@ kotlin {
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+        // Без этого строки из composeResources не попадут в APK.
+        androidResources { enable = true }
+        withHostTest {}
     }
 
     sourceSets {
@@ -23,6 +26,15 @@ kotlin {
             api(libs.compose.runtime)
             api(libs.compose.foundation)
             api(libs.compose.material3)
+            implementation(libs.compose.material.icons.core)
+            implementation(libs.compose.components.resources)
+        }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
         }
     }
+}
+
+compose.resources {
+    packageOfResClass = "io.github.nullbrash.quazio.core.ui.res"
 }
