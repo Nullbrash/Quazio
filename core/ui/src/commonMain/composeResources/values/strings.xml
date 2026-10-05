@@ -127,7 +127,7 @@
     <string name="cal_done">Готово</string>
     <string name="cal_next">Далее</string>
     <string name="cal_week_sunday">Неделя начинается с воскресенья</string>
-    <string name="cal_today">Сегодня</string>
+    <string name="cal_today">Сейчас</string>
     <string name="cal_prev_day">Предыдущий день</string>
     <string name="cal_next_day">Следующий день</string>
     <string name="cal_view_day">День</string>
