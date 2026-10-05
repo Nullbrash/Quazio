@@ -230,6 +230,25 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         Tag(id, clean, kind)
     }
 
+    fun updateTag(id: String, name: String, kind: TagKind) = db.transaction {
+        val old = requireNotNull(q.tagById(id).executeAsOneOrNull()) { "Нет метки $id" }
+        val clean = cleanName(name)
+        val changed = buildMap {
+            if (old.name != clean) put("name", clean)
+            if (old.kind != kind.dbValue) put("kind", kind.dbValue)
+        }
+        if (changed.isEmpty()) return@transaction
+        val hlc = clock.now()
+        q.updateTag(clean, kind.dbValue, hlc.toString(), id)
+        changeLog.record(old.account_id, T_TAG, id, hlc, changed)
+    }
+
+    /** Удалить метку: с операций она исчезает, сами операции остаются. */
+    fun deleteTag(id: String) = db.transaction {
+        val old = requireNotNull(q.tagById(id).executeAsOneOrNull()) { "Нет метки $id" }
+        markDeleted(old.account_id, T_TAG, id) { q.setTagDeleted(it, id) }
+    }
+
     fun merchantSuggestions(accountId: String, prefix: String, limit: Long = 8): List<String> =
         q.merchantsMatching(accountId, likePrefix(normalize(prefix)), limit).executeAsList().map { it.name }
 

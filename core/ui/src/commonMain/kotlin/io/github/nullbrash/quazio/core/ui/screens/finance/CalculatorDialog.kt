@@ -50,9 +50,17 @@ import org.jetbrains.compose.resources.stringResource
  * Калькулятор суммы — раскладка как в Wallet пользователя: `C ÷ × ⌫`, цифры, `− + =`,
  * `, 0 000 ✓`. На ПК — ещё и с клавиатуры: цифры, + - * /, запятая/точка, Backspace,
  * Enter — готово, Esc — отмена. Отрицательная сумма допустима только если [allowNegative].
+ * [allowSign] — можно начать с «+» или «−»: окно операции выбирает по знаку доход/расход;
+ * в [onDone] приходит и явный знак (null — знака не было).
  */
 @Composable
-internal fun CalculatorDialog(initial: String, allowNegative: Boolean, onDone: (Long) -> Unit, onDismiss: () -> Unit) {
+internal fun CalculatorDialog(
+    initial: String,
+    allowNegative: Boolean,
+    onDone: (minor: Long, explicitSign: Int?) -> Unit,
+    onDismiss: () -> Unit,
+    allowSign: Boolean = false,
+) {
     var expr by remember { mutableStateOf(initial) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -66,7 +74,7 @@ internal fun CalculatorDialog(initial: String, allowNegative: Boolean, onDone: (
             in AmountExpression.OPERATORS.map { it.toString() } -> {
                 val op = key[0]
                 when {
-                    expr.isEmpty() -> if (op == '−' && allowNegative) "−" else expr
+                    expr.isEmpty() -> if ((op == '−' && (allowNegative || allowSign)) || (op == '+' && allowSign)) op.toString() else expr
                     expr.last() in AmountExpression.OPERATORS || expr.last() == ',' -> expr.dropLast(1) + op
                     else -> expr + op
                 }
@@ -80,7 +88,10 @@ internal fun CalculatorDialog(initial: String, allowNegative: Boolean, onDone: (
     }
 
     val result = AmountExpression.evaluate(expr)
-    val done: () -> Unit = { if (result != null && (allowNegative || result > 0)) onDone(result) }
+    val sign = AmountExpression.explicitSign(expr)
+    val done: () -> Unit = {
+        if (result != null && (allowNegative || allowSign || result > 0) && (result != 0L || allowNegative)) onDone(result, sign)
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 6.dp, modifier = Modifier.widthIn(max = 380.dp)) {

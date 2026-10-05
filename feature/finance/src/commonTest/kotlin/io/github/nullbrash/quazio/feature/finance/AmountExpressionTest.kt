@@ -47,6 +47,16 @@ class AmountExpressionTest {
     }
 
     @Test
+    fun leadingSignIsExplicit() {
+        assertEquals(500_000L, calc("+5 000"))
+        assertEquals(-500_000L, calc("−5 000"))
+        assertEquals(1, AmountExpression.explicitSign("+5000"))
+        assertEquals(-1, AmountExpression.explicitSign("-5000"))
+        assertEquals(null, AmountExpression.explicitSign("5000"))
+        assertEquals(59_000L, calc("+350+120×2"))
+    }
+
+    @Test
     fun operatorsDetection() {
         assertTrue(AmountExpression.hasOperators("350+120"))
         assertFalse(AmountExpression.hasOperators("350"))

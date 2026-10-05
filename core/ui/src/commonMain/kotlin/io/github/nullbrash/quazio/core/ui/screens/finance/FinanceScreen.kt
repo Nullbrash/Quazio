@@ -47,8 +47,11 @@ import io.github.nullbrash.quazio.core.ui.res.fin_add_account
 import io.github.nullbrash.quazio.core.ui.res.fin_add_txn
 import io.github.nullbrash.quazio.core.ui.res.fin_archived
 import io.github.nullbrash.quazio.core.ui.res.fin_categories
+import io.github.nullbrash.quazio.core.ui.res.fin_debt_return_to_org
+import io.github.nullbrash.quazio.core.ui.res.fin_debt_return_to_person
 import io.github.nullbrash.quazio.core.ui.res.fin_debt_returns
-import io.github.nullbrash.quazio.core.ui.res.fin_debt_waits
+import io.github.nullbrash.quazio.core.ui.res.fin_tags
+import io.github.nullbrash.quazio.core.ui.res.txn_debt
 import io.github.nullbrash.quazio.core.ui.res.fin_empty_month
 import io.github.nullbrash.quazio.core.ui.res.fin_expense
 import io.github.nullbrash.quazio.core.ui.res.fin_in_total
@@ -59,6 +62,7 @@ import io.github.nullbrash.quazio.feature.finance.CategoryNode
 import io.github.nullbrash.quazio.feature.finance.FinAccount
 import io.github.nullbrash.quazio.feature.finance.FinAccountType
 import io.github.nullbrash.quazio.feature.finance.Tag
+import io.github.nullbrash.quazio.feature.finance.TagKind
 import io.github.nullbrash.quazio.feature.finance.Totals
 import io.github.nullbrash.quazio.feature.finance.Transaction
 import io.github.nullbrash.quazio.feature.finance.TxnKind
@@ -85,6 +89,7 @@ private sealed interface FinanceView {
     data object Main : FinanceView
     data class Editor(val txnId: String?) : FinanceView
     data object Categories : FinanceView
+    data object Tags : FinanceView
 }
 
 @Composable
@@ -131,6 +136,10 @@ fun FinanceScreen(services: AppServices) {
             view = FinanceView.Main
             reload++
         }
+        FinanceView.Tags -> TagsScreen(services, d.accountId) {
+            view = FinanceView.Main
+            reload++
+        }
         FinanceView.Main -> Box(Modifier.fillMaxSize()) {
             FinanceMain(
                 data = d,
@@ -140,6 +149,7 @@ fun FinanceScreen(services: AppServices) {
                 onAccount = { accountDialog = it },
                 onNewAccount = { newAccountDialog = true },
                 onCategories = { view = FinanceView.Categories },
+                onTags = { view = FinanceView.Tags },
             )
             ExtendedFloatingActionButton(
                 onClick = { view = FinanceView.Editor(null) },
@@ -174,8 +184,10 @@ private fun FinanceMain(
     onAccount: (FinAccount) -> Unit,
     onNewAccount: () -> Unit,
     onCategories: () -> Unit,
+    onTags: () -> Unit,
 ) {
     val colors = data.categories.associate { it.id to it.color }
+    val debtIds = data.accounts.filter { it.type == FinAccountType.DEBT }.mapTo(HashSet()) { it.id }
     val byDay = data.transactions.groupBy { localDateTime(it.occurredAt, it.timeZone).date }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -185,6 +197,7 @@ private fun FinanceMain(
                 Text(monthTitle(month), style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = { onMonth(month.next()) }) { Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null) }
                 Spacer(Modifier.weight(1f))
+                TextButton(onClick = onTags) { Text(stringResource(Res.string.fin_tags)) }
                 TextButton(onClick = onCategories) { Text(stringResource(Res.string.fin_categories)) }
             }
         }
@@ -197,8 +210,8 @@ private fun FinanceMain(
         }
         item {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val tagNames = data.tags.associate { it.id to it.name }
-                items(data.accounts, key = { it.id }) { account -> AccountCard(account, account.personTagId?.let(tagNames::get)) { onAccount(account) } }
+                val tagsById = data.tags.associateBy { it.id }
+                items(data.accounts, key = { it.id }) { account -> AccountCard(account, account.personTagId?.let(tagsById::get)) { onAccount(account) } }
                 item { AssistChip(onClick = onNewAccount, label = { Text(stringResource(Res.string.fin_add_account)) }, leadingIcon = { Icon(Icons.Filled.Add, null) }) }
             }
             Text(
@@ -222,7 +235,7 @@ private fun FinanceMain(
                     if (dayExpense.minor > 0) Text("−" + formatMoney(dayExpense), style = MaterialTheme.typography.labelLarge)
                 }
             }
-            items(dayTxns, key = { it.id }) { t -> TransactionRow(t, colors[t.categoryId]) { onTransaction(t) } }
+            items(dayTxns, key = { it.id }) { t -> TransactionRow(t, colors[t.categoryId], debtIds) { onTransaction(t) } }
         }
     }
 }
@@ -236,19 +249,24 @@ private fun TotalCell(label: String, value: String, color: Color?) {
 }
 
 @Composable
-private fun AccountCard(account: FinAccount, counterparty: String?, onClick: () -> Unit) {
+private fun AccountCard(account: FinAccount, counterparty: Tag?, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (account.type == FinAccountType.DEBT) {
                 // Долг: знак говорит, кто кому должен — «+» вам вернут, «−» вернёте вы.
                 val toMe = !account.balance.isNegative
-                // «Катя вернёт» / «Катя ждёт»: имя — в начальной форме, склонять его автоматически ненадёжно.
+                // Имя впереди — деньги вам («Катя вернёт»), «Верну» впереди — от вас («Верну: Катя»).
+                // Имя не склоняем: автоматически это ненадёжно; организации — в кавычках.
                 if (counterparty != null && account.balance.minor != 0L) {
-                    Text(
-                        stringResource(if (toMe) Res.string.fin_debt_returns else Res.string.fin_debt_waits, counterparty),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                    val org = counterparty.kind == TagKind.ORGANIZATION
+                    val shown = if (org) "«${counterparty.name}»" else counterparty.name
+                    val res = when {
+                        toMe -> Res.string.fin_debt_returns
+                        org -> Res.string.fin_debt_return_to_org
+                        else -> Res.string.fin_debt_return_to_person
+                    }
+                    Text(stringResource(res, shown), style = MaterialTheme.typography.labelSmall)
                 }
                 Text(
                     (if (toMe && account.balance.minor > 0) "+" else "") + formatMoney(account.balance),
@@ -268,9 +286,12 @@ private fun AccountCard(account: FinAccount, counterparty: String?, onClick: () 
 }
 
 @Composable
-private fun TransactionRow(t: Transaction, categoryColor: Long?, onClick: () -> Unit) {
+private fun TransactionRow(t: Transaction, categoryColor: Long?, debtIds: Set<String>, onClick: () -> Unit) {
     val noCategory = stringResource(Res.string.fin_no_category)
-    val kindLabel = stringResource(t.kind.label)
+    // Перевод с участием счёта-долга показываем как «Долг» со знаком: «+» — деньги к вам.
+    val debtIn = t.kind == TxnKind.TRANSFER && t.finAccountId in debtIds
+    val debtOut = t.kind == TxnKind.TRANSFER && t.toFinAccountId in debtIds
+    val kindLabel = stringResource(if (debtIn || debtOut) Res.string.txn_debt else t.kind.label)
     val title = t.merchantName ?: t.description.ifBlank { null } ?: t.categoryName ?: kindLabel
     val account = if (t.kind == TxnKind.TRANSFER) "${t.finAccountName} → ${t.toFinAccountName}" else t.finAccountName
     val category = when (t.kind) {
@@ -278,11 +299,15 @@ private fun TransactionRow(t: Transaction, categoryColor: Long?, onClick: () -> 
         else -> kindLabel
     }
     val subtitle = listOfNotNull(category.takeIf { it != title }, account, t.tags.joinToString { it.name }.ifBlank { null }).joinToString(" · ")
-    val (amountText, amountColor) = when (t.kind) {
+    val (amountText, amountColor) = when {
+        debtIn -> "+" + formatMoney(t.amount) to INCOME_COLOR
+        debtOut -> "−" + formatMoney(t.amount) to null
+        else -> when (t.kind) {
         TxnKind.EXPENSE -> "−" + formatMoney(t.amount) to null
         TxnKind.INCOME -> "+" + formatMoney(t.amount) to INCOME_COLOR
         TxnKind.TRANSFER -> formatMoney(t.amount) to null
         TxnKind.ADJUSTMENT -> (if (t.amount.isNegative) "" else "+") + formatMoney(t.amount) to null
+        }
     }
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),

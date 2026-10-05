@@ -83,8 +83,8 @@ internal fun CategoriesScreen(services: AppServices, accountId: String, onBack: 
             TextButton(onClick = { dialog = CategoryDialog.Add(null) }) { Text(stringResource(Res.string.cat_add)) }
         }
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = kind == CategoryKind.EXPENSE, onClick = { kind = CategoryKind.EXPENSE }, label = { Text(stringResource(Res.string.fin_expense)) })
             FilterChip(selected = kind == CategoryKind.INCOME, onClick = { kind = CategoryKind.INCOME }, label = { Text(stringResource(Res.string.fin_income)) })
+            FilterChip(selected = kind == CategoryKind.EXPENSE, onClick = { kind = CategoryKind.EXPENSE }, label = { Text(stringResource(Res.string.fin_expense)) })
         }
         val guides = remember(nodes) { treeGuides(nodes) }
         LazyColumn(Modifier.fillMaxSize()) {

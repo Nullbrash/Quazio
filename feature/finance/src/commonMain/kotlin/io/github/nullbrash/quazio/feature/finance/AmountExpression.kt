@@ -39,6 +39,16 @@ object AmountExpression {
         }
     }
 
+    /**
+     * Явный знак в начале выражения: «+5 000» → +1, «−5 000» → −1, без знака → null.
+     * По нему окно операции выбирает доход или расход (пожелание пользователя).
+     */
+    fun explicitSign(expression: String): Int? = when (expression.trimStart().firstOrNull()?.let(::normalizeOp)) {
+        '+' -> 1
+        '−' -> -1
+        else -> null
+    }
+
     /** Есть ли в строке операции (тогда показываем предварительный результат). */
     fun hasOperators(expression: String): Boolean = expression.drop(1).any { normalizeOp(it) in OPERATORS }
 
@@ -66,8 +76,11 @@ object AmountExpression {
                 c.isDigit() || c == ',' || c == '.' -> number.append(c)
                 c == ' ' || c == ' ' -> Unit
                 c in OPERATORS -> {
-                    // Минус в самом начале — знак числа, а не операция.
-                    if (c == '−' && index == 0 && number.isEmpty() && out.isEmpty()) { number.append('-'); continue }
+                    // Знак в самом начале — знак числа, а не операция.
+                    if (index == 0 && number.isEmpty() && out.isEmpty()) {
+                        if (c == '−') { number.append('-'); continue }
+                        if (c == '+') continue
+                    }
                     if (!flush()) return null
                     out += c
                 }

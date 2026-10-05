@@ -77,6 +77,12 @@ SELECT * FROM tag WHERE account_id = ? AND deleted = 0 ORDER BY kind, name;
 tagById:
 SELECT * FROM tag WHERE id = ?;
 
+updateTag:
+UPDATE tag SET name = :name, kind = :kind, hlc = :hlc WHERE id = :id;
+
+setTagDeleted:
+UPDATE tag SET deleted = 1, hlc = :hlc WHERE id = :id;
+
 -- ===== Операции =====
 
 insertTxn:

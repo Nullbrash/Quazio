@@ -163,6 +163,19 @@ class FinanceServiceTest {
     }
 
     @Test
+    fun tagsCanBeEditedAndDeleted() {
+        val tag = finance.createTag(accountId, "Сбер", TagKind.PERSON)
+        val id = expense(1_000, cash().id, tags = setOf(tag.id))
+        finance.updateTag(tag.id, "Сбербанк", TagKind.ORGANIZATION)
+        assertEquals(listOf(Tag(tag.id, "Сбербанк", TagKind.ORGANIZATION)), finance.tags(accountId))
+        finance.deleteTag(tag.id)
+        assertTrue(finance.tags(accountId).isEmpty())
+        // Операция осталась, метка с неё исчезла.
+        val op = finance.transactions(accountId, 0, Long.MAX_VALUE).single { it.id == id }
+        assertTrue(op.tags.isEmpty())
+    }
+
+    @Test
     fun invalidDraftsAreRejected() {
         assertFailsWith<IllegalArgumentException> { expense(0, cash().id) }
         assertFailsWith<IllegalArgumentException> {

@@ -195,7 +195,7 @@ internal fun AccountEditor(services: AppServices, accountId: String, account: Fi
         CalculatorDialog(
             initial = balanceText.takeIf { it != "0" }.orEmpty(),
             allowNegative = true,
-            onDone = { balanceText = formatAmountForEdit(it); error = null; showCalc = false },
+            onDone = { minor, _ -> balanceText = formatAmountForEdit(minor); error = null; showCalc = false },
             onDismiss = { showCalc = false },
         )
     }

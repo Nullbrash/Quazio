@@ -41,8 +41,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
@@ -52,27 +52,37 @@ import io.github.nullbrash.quazio.core.ui.res.lock_done
 import io.github.nullbrash.quazio.core.ui.res.txn_account
 import io.github.nullbrash.quazio.core.ui.res.txn_add_tag
 import io.github.nullbrash.quazio.core.ui.res.txn_amount
-import io.github.nullbrash.quazio.core.ui.res.txn_amount_adjustment
 import io.github.nullbrash.quazio.core.ui.res.txn_bad_amount
 import io.github.nullbrash.quazio.core.ui.res.txn_category
+import io.github.nullbrash.quazio.core.ui.res.txn_debt
+import io.github.nullbrash.quazio.core.ui.res.txn_debt_sign_hint
+import io.github.nullbrash.quazio.core.ui.res.txn_debt_with
 import io.github.nullbrash.quazio.core.ui.res.txn_delete
 import io.github.nullbrash.quazio.core.ui.res.txn_delete_confirm
 import io.github.nullbrash.quazio.core.ui.res.txn_description
+import io.github.nullbrash.quazio.core.ui.res.txn_description_hint
 import io.github.nullbrash.quazio.core.ui.res.txn_edit
+import io.github.nullbrash.quazio.core.ui.res.txn_from_account
 import io.github.nullbrash.quazio.core.ui.res.txn_merchant
 import io.github.nullbrash.quazio.core.ui.res.txn_need_account
+import io.github.nullbrash.quazio.core.ui.res.txn_need_debt
 import io.github.nullbrash.quazio.core.ui.res.txn_need_to_account
 import io.github.nullbrash.quazio.core.ui.res.txn_new
+import io.github.nullbrash.quazio.core.ui.res.txn_new_debt
 import io.github.nullbrash.quazio.core.ui.res.txn_note
+import io.github.nullbrash.quazio.core.ui.res.txn_note_hint
 import io.github.nullbrash.quazio.core.ui.res.txn_save
 import io.github.nullbrash.quazio.core.ui.res.txn_tags
 import io.github.nullbrash.quazio.core.ui.res.txn_to_account
 import io.github.nullbrash.quazio.feature.finance.CategoryKind
+import io.github.nullbrash.quazio.feature.finance.FinAccount
+import io.github.nullbrash.quazio.feature.finance.FinAccountType
 import io.github.nullbrash.quazio.feature.finance.Tag
+import io.github.nullbrash.quazio.feature.finance.TagKind
 import io.github.nullbrash.quazio.feature.finance.TransactionDraft
 import io.github.nullbrash.quazio.feature.finance.TxnKind
 import io.github.nullbrash.quazio.feature.finance.formatAmountForEdit
-import io.github.nullbrash.quazio.feature.finance.parseAmountMinor
+import io.github.nullbrash.quazio.feature.finance.formatMoney
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.delay
@@ -81,9 +91,23 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-/** Окно операции по образцу Wallet пользователя: тип, сумма, счёт, категория, магазин, описание, метки, дата, заметка. */
+/**
+ * Вид операции в окне. «Долг» хранится как перевод между своим счётом и счётом-долгом:
+ * «−» — деньги ушли от вас (дали в долг / вернули свой), «+» — пришли (вам вернули / заняли).
+ * Порядок — доход первым (пожелание пользователя).
+ */
+internal enum class EditorKind(val label: StringResource) {
+    INCOME(TxnKind.INCOME.label),
+    EXPENSE(TxnKind.EXPENSE.label),
+    TRANSFER(TxnKind.TRANSFER.label),
+    DEBT(Res.string.txn_debt),
+    ADJUSTMENT(TxnKind.ADJUSTMENT.label),
+}
+
+/** Окно операции по образцу Wallet пользователя. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: String?, onClose: (changed: Boolean) -> Unit) {
@@ -91,13 +115,17 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
     val finance = services.finance
     val accountId = data.accountId
     val zone = remember { currentZone() }
-    val activeAccounts = data.accounts.filter { !it.archived }
+    var accounts by remember { mutableStateOf(data.accounts.filter { !it.archived }) }
+    val ownAccounts = accounts.filter { it.type != FinAccountType.DEBT }
+    val debtAccounts = accounts.filter { it.type == FinAccountType.DEBT }
 
     var loaded by remember { mutableStateOf(txnId == null) }
-    var kind by remember { mutableStateOf(TxnKind.EXPENSE) }
-    var amountText by remember { mutableStateOf("") }
-    var finAccountId by remember { mutableStateOf(activeAccounts.firstOrNull()?.id) }
-    var toFinAccountId by remember { mutableStateOf<String?>(null) }
+    var kind by remember { mutableStateOf(EditorKind.EXPENSE) }
+    /** Модуль суммы в копейках; знак — отдельно ([sign]). */
+    var amountMinor by remember { mutableStateOf<Long?>(null) }
+    var sign by remember { mutableStateOf(-1) }
+    var finAccountId by remember { mutableStateOf(ownAccounts.firstOrNull()?.id) }
+    var secondAccountId by remember { mutableStateOf<String?>(null) }
     var categoryId by remember { mutableStateOf<String?>(null) }
     var merchant by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -116,18 +144,40 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
     var pickTags by remember { mutableStateOf(false) }
     var pickDate by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf(false) }
+    var newDebt by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    // Новая операция начинается с суммы — калькулятор сразу (как в Wallet по нажатию на сумму).
     var calcOnNew by remember { mutableStateOf(data.calculatorOnNew) }
     var showCalc by remember { mutableStateOf(txnId == null && data.calculatorOnNew) }
+
+    fun isDebt(id: String?) = accounts.firstOrNull { it.id == id }?.type == FinAccountType.DEBT
 
     LaunchedEffect(txnId) {
         if (txnId == null) return@LaunchedEffect
         val d = withContext(Dispatchers.IO) { finance.transaction(txnId) } ?: return@LaunchedEffect onClose(false)
-        kind = d.kind
-        amountText = formatAmountForEdit(d.amountMinor)
-        finAccountId = d.finAccountId
-        toFinAccountId = d.toFinAccountId
+        when {
+            d.kind == TxnKind.TRANSFER && isDebt(d.toFinAccountId) -> {
+                kind = EditorKind.DEBT; sign = -1; finAccountId = d.finAccountId; secondAccountId = d.toFinAccountId
+            }
+            d.kind == TxnKind.TRANSFER && isDebt(d.finAccountId) -> {
+                kind = EditorKind.DEBT; sign = 1; finAccountId = d.toFinAccountId; secondAccountId = d.finAccountId
+            }
+            else -> {
+                kind = when (d.kind) {
+                    TxnKind.INCOME -> EditorKind.INCOME
+                    TxnKind.EXPENSE -> EditorKind.EXPENSE
+                    TxnKind.TRANSFER -> EditorKind.TRANSFER
+                    TxnKind.ADJUSTMENT -> EditorKind.ADJUSTMENT
+                }
+                sign = when (d.kind) {
+                    TxnKind.INCOME -> 1
+                    TxnKind.ADJUSTMENT -> if (d.amountMinor < 0) -1 else 1
+                    else -> -1
+                }
+                finAccountId = d.finAccountId
+                secondAccountId = d.toFinAccountId
+            }
+        }
+        amountMinor = kotlin.math.abs(d.amountMinor)
         categoryId = d.categoryId
         merchant = d.merchantName.orEmpty()
         description = d.description
@@ -155,29 +205,64 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
         delay(500)
         val s = withContext(Dispatchers.IO) { finance.suggest(accountId, merchant, description) } ?: return@LaunchedEffect
         if (!touchedCategory && categoryId == null && (s.kind == TxnKind.EXPENSE || s.kind == TxnKind.INCOME)) {
-            kind = s.kind
+            kind = if (s.kind == TxnKind.INCOME) EditorKind.INCOME else EditorKind.EXPENSE
+            sign = if (s.kind == TxnKind.INCOME) 1 else -1
             categoryId = s.categoryId
         }
-        if (!touchedAccount && activeAccounts.any { it.id == s.finAccountId }) finAccountId = s.finAccountId
+        if (!touchedAccount && ownAccounts.any { it.id == s.finAccountId }) finAccountId = s.finAccountId
         if (!touchedTags && tagIds.isEmpty()) tagIds = s.tagIds
     }
 
     if (!loaded) return
 
+    val signed = kind != EditorKind.TRANSFER
+    fun setKind(k: EditorKind) {
+        kind = k
+        error = null
+        when (k) {
+            EditorKind.INCOME -> sign = 1
+            EditorKind.EXPENSE, EditorKind.DEBT -> sign = -1
+            else -> Unit
+        }
+        if (k == EditorKind.DEBT && !isDebt(secondAccountId)) secondAccountId = debtAccounts.firstOrNull()?.id
+        if (k == EditorKind.TRANSFER && (isDebt(secondAccountId) || secondAccountId == finAccountId)) secondAccountId = null
+    }
+    fun flipSign() {
+        sign = -sign
+        if (kind == EditorKind.INCOME || kind == EditorKind.EXPENSE) kind = if (sign > 0) EditorKind.INCOME else EditorKind.EXPENSE
+    }
+
     val badAmount = stringResource(Res.string.txn_bad_amount)
     val needAccount = stringResource(Res.string.txn_need_account)
     val needToAccount = stringResource(Res.string.txn_need_to_account)
+    val needDebt = stringResource(Res.string.txn_need_debt)
     val save: () -> Unit = save@{
-        val minor = parseAmountMinor(amountText)
-        val okAmount = minor != null && (if (kind == TxnKind.ADJUSTMENT) minor != 0L else minor > 0)
-        if (!okAmount) { error = badAmount; return@save }
-        val from = finAccountId ?: run { error = needAccount; return@save }
-        if (kind == TxnKind.TRANSFER && (toFinAccountId == null || toFinAccountId == from)) { error = needToAccount; return@save }
-        val draft = TransactionDraft(
-            id = txnId, kind = kind, amountMinor = minor!!, finAccountId = from, toFinAccountId = toFinAccountId,
-            categoryId = categoryId, merchantName = merchant, tagIds = tagIds, occurredAt = toMillis(dateTime, zone),
-            timeZone = zone.id, description = description, note = note,
-        )
+        val abs = amountMinor?.takeIf { it > 0 } ?: run { error = badAmount; return@save }
+        val mine = finAccountId ?: run { error = needAccount; return@save }
+        val at = toMillis(dateTime, zone)
+        val draft = when (kind) {
+            EditorKind.INCOME, EditorKind.EXPENSE -> TransactionDraft(
+                id = txnId, kind = if (kind == EditorKind.INCOME) TxnKind.INCOME else TxnKind.EXPENSE, amountMinor = abs,
+                finAccountId = mine, categoryId = categoryId, merchantName = merchant, tagIds = tagIds,
+                occurredAt = at, timeZone = zone.id, description = description, note = note,
+            )
+            EditorKind.TRANSFER -> {
+                val to = secondAccountId?.takeIf { it != mine } ?: run { error = needToAccount; return@save }
+                TransactionDraft(id = txnId, kind = TxnKind.TRANSFER, amountMinor = abs, finAccountId = mine, toFinAccountId = to,
+                    tagIds = tagIds, occurredAt = at, timeZone = zone.id, description = description, note = note)
+            }
+            EditorKind.DEBT -> {
+                val debt = secondAccountId?.takeIf { isDebt(it) } ?: run { error = needDebt; return@save }
+                // «−» — со своего счёта на долг, «+» — с долга на свой счёт.
+                val (from, to) = if (sign < 0) mine to debt else debt to mine
+                TransactionDraft(id = txnId, kind = TxnKind.TRANSFER, amountMinor = abs, finAccountId = from, toFinAccountId = to,
+                    tagIds = tagIds, occurredAt = at, timeZone = zone.id, description = description, note = note)
+            }
+            EditorKind.ADJUSTMENT -> TransactionDraft(
+                id = txnId, kind = TxnKind.ADJUSTMENT, amountMinor = sign * abs, finAccountId = mine, tagIds = tagIds,
+                occurredAt = at, timeZone = zone.id, description = description, note = note,
+            )
+        }
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { finance.saveTransaction(accountId, draft) } }
             result.onSuccess { onClose(true) }.onFailure { error = it.message }
@@ -192,17 +277,22 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
             Button(onClick = save, modifier = Modifier.padding(end = 8.dp)) { Text(stringResource(Res.string.txn_save)) }
         }
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 640.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 720.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TxnKind.entries.forEach { k ->
-                    FilterChip(selected = kind == k, onClick = { kind = k; error = null }, label = { Text(stringResource(k.label)) })
-                }
+                EditorKind.entries.forEach { k -> FilterChip(selected = kind == k, onClick = { setKind(k) }, label = { Text(stringResource(k.label)) }) }
             }
+
+            // Дата и время — над суммой, как в Wallet.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { pickDate = true }) { Text(dateText(dateTime)) }
+                OutlinedButton(onClick = { pickTime = true }) { Text(timeText(dateTime)) }
+            }
+
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(if (kind == TxnKind.ADJUSTMENT) Res.string.txn_amount_adjustment else Res.string.txn_amount), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    Text(stringResource(Res.string.txn_amount), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                     // Настройка прямо здесь, чтобы не ходить в «Настройки» (пожелание пользователя).
                     Text(stringResource(Res.string.calc_on_new), style = MaterialTheme.typography.labelMedium)
                     Switch(
@@ -214,34 +304,53 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
-                OutlinedButton(onClick = { showCalc = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(amountText.ifEmpty { "0" } + " ₽", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (signed) OutlinedButton(onClick = { flipSign() }) { Text(if (sign > 0) "+" else "−", style = MaterialTheme.typography.titleLarge) }
+                    OutlinedButton(onClick = { showCalc = true }, modifier = Modifier.weight(1f)) {
+                        val text = amountMinor?.let { (if (signed) (if (sign > 0) "+" else "−") else "") + formatMoney(Money.rub(it)) } ?: "0 ₽"
+                        Text(text, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.fillMaxWidth())
+                    }
                 }
+                if (kind == EditorKind.DEBT) Text(stringResource(Res.string.txn_debt_sign_hint), style = MaterialTheme.typography.bodySmall)
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
-            LabeledPicker(stringResource(Res.string.txn_account), activeAccounts.firstOrNull { it.id == finAccountId }?.name ?: "—") { dismiss ->
-                activeAccounts.forEach { a -> MenuOption(a.name) { finAccountId = a.id; touchedAccount = true; dismiss() } }
-            }
-            if (kind == TxnKind.TRANSFER) {
-                LabeledPicker(stringResource(Res.string.txn_to_account), activeAccounts.firstOrNull { it.id == toFinAccountId }?.name ?: "—") { dismiss ->
-                    activeAccounts.filter { it.id != finAccountId }.forEach { a -> MenuOption(a.name) { toFinAccountId = a.id; dismiss() } }
+            // Счёт и второе поле — в одну строку.
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                val firstLabel = if (kind == EditorKind.TRANSFER) Res.string.txn_from_account else Res.string.txn_account
+                LabeledPicker(stringResource(firstLabel), ownAccounts.firstOrNull { it.id == finAccountId }?.name ?: "—") { dismiss ->
+                    ownAccounts.forEach { a -> MenuOption(a.name) { finAccountId = a.id; touchedAccount = true; dismiss() } }
                 }
-            }
-            if (kind == TxnKind.EXPENSE || kind == TxnKind.INCOME) {
-                val node = data.categories.firstOrNull { it.id == categoryId }
-                Column {
-                    Text(stringResource(Res.string.txn_category), style = MaterialTheme.typography.labelLarge)
-                    OutlinedButton(onClick = { pickCategory = true }) {
-                        if (node != null) ColorDot(node.color, Modifier.padding(end = 8.dp))
-                        Text(node?.path ?: stringResource(Res.string.fin_no_category))
+                when (kind) {
+                    EditorKind.INCOME, EditorKind.EXPENSE -> {
+                        val node = data.categories.firstOrNull { it.id == categoryId }
+                        Column {
+                            Text(stringResource(Res.string.txn_category), style = MaterialTheme.typography.labelLarge)
+                            OutlinedButton(onClick = { pickCategory = true }) {
+                                if (node != null) ColorDot(node.color, Modifier.padding(end = 8.dp))
+                                Text(node?.path ?: stringResource(Res.string.fin_no_category))
+                            }
+                        }
                     }
+                    EditorKind.TRANSFER -> LabeledPicker(stringResource(Res.string.txn_to_account), ownAccounts.firstOrNull { it.id == secondAccountId }?.name ?: "—") { dismiss ->
+                        ownAccounts.filter { it.id != finAccountId }.forEach { a -> MenuOption(a.name) { secondAccountId = a.id; dismiss() } }
+                    }
+                    EditorKind.DEBT -> LabeledPicker(stringResource(Res.string.txn_debt_with), debtAccounts.firstOrNull { it.id == secondAccountId }?.name ?: "—") { dismiss ->
+                        debtAccounts.forEach { a -> MenuOption(a.name) { secondAccountId = a.id; dismiss() } }
+                        MenuOption(stringResource(Res.string.txn_new_debt)) { newDebt = true; dismiss() }
+                    }
+                    EditorKind.ADJUSTMENT -> Unit
                 }
             }
 
-            FinField(merchant, { merchant = it }, stringResource(Res.string.txn_merchant), Modifier.fillMaxWidth(), onSubmit = save)
-            Hints(merchantHints) { merchant = it; merchantHints = emptyList() }
-            FinField(description, { description = it }, stringResource(Res.string.txn_description), Modifier.fillMaxWidth(), onSubmit = save)
+            if (kind == EditorKind.INCOME || kind == EditorKind.EXPENSE) {
+                FinField(merchant, { merchant = it }, stringResource(Res.string.txn_merchant), Modifier.fillMaxWidth(), onSubmit = save)
+                Hints(merchantHints) { merchant = it; merchantHints = emptyList() }
+            }
+            Column {
+                FinField(description, { description = it }, stringResource(Res.string.txn_description), Modifier.fillMaxWidth(), onSubmit = save)
+                Text(stringResource(Res.string.txn_description_hint), style = MaterialTheme.typography.bodySmall)
+            }
             Hints(descriptionHints) { description = it; descriptionHints = emptyList() }
 
             Column {
@@ -258,26 +367,32 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
                     SuggestionChip(onClick = { pickTags = true }, label = { Text(stringResource(Res.string.txn_add_tag)) })
                 }
             }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { pickDate = true }) { Text(dateText(dateTime)) }
-                OutlinedButton(onClick = { pickTime = true }) { Text(timeText(dateTime)) }
+            Column {
+                FinField(note, { note = it }, stringResource(Res.string.txn_note), Modifier.fillMaxWidth(), singleLine = false)
+                Text(stringResource(Res.string.txn_note_hint), style = MaterialTheme.typography.bodySmall)
             }
-            FinField(note, { note = it }, stringResource(Res.string.txn_note), Modifier.fillMaxWidth(), singleLine = false)
         }
     }
 
     if (showCalc) {
         CalculatorDialog(
-            initial = amountText,
-            allowNegative = kind == TxnKind.ADJUSTMENT,
-            onDone = { amountText = formatAmountForEdit(it); error = null; showCalc = false },
+            initial = amountMinor?.let { (if (signed && sign < 0) "−" else "") + formatAmountForEdit(it) }.orEmpty(),
+            allowNegative = false,
+            allowSign = signed,
+            onDone = { minor, explicit ->
+                amountMinor = kotlin.math.abs(minor)
+                // «+5 000» / «−5 000» — знак выбирает направление (у дохода/расхода — и сам вид).
+                val newSign = explicit ?: if (minor < 0) -1 else null
+                if (signed && newSign != null && newSign != sign) flipSign()
+                error = null
+                showCalc = false
+            },
             onDismiss = { showCalc = false },
         )
     }
     if (pickCategory) {
         CategoryPickerDialog(
-            categories = data.categories.filter { it.kind == if (kind == TxnKind.INCOME) CategoryKind.INCOME else CategoryKind.EXPENSE },
+            categories = data.categories.filter { it.kind == if (kind == EditorKind.INCOME) CategoryKind.INCOME else CategoryKind.EXPENSE },
             selectedId = categoryId,
             onPick = { categoryId = it; touchedCategory = true; pickCategory = false },
             onDismiss = { pickCategory = false },
@@ -297,6 +412,24 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
                 }
             },
             onDismiss = { pickTags = false },
+        )
+    }
+    if (newDebt) {
+        NewDebtDialog(
+            counterparties = tags.filter { it.kind == TagKind.PERSON || it.kind == TagKind.ORGANIZATION },
+            onDismiss = { newDebt = false },
+            onCreate = { name, tagKind ->
+                newDebt = false
+                scope.launch {
+                    val created: FinAccount = withContext(Dispatchers.IO) {
+                        val tag = finance.createTag(accountId, name, tagKind)
+                        val id = finance.createAccount(accountId, tag.name, FinAccountType.DEBT, personTagId = tag.id)
+                        finance.accounts(accountId).first { it.id == id }
+                    }
+                    accounts = accounts + created
+                    secondAccountId = created.id
+                }
+            },
         )
     }
     if (pickDate) {
