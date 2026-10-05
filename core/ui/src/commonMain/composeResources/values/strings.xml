@@ -34,11 +34,13 @@
     <string name="lock_repeat_password">Повторите пароль</string>
     <string name="lock_current_password">Текущий пароль</string>
     <string name="lock_mismatch">Пароли не совпадают</string>
-    <string name="lock_too_short">Не короче 4 символов</string>
+    <string name="lock_too_short">Введите пароль</string>
     <string name="lock_setup_required">На телефоне нет блокировки экрана. Задайте пароль Quazio, чтобы открыть этот раздел.</string>
-    <string name="lock_code_text">Запишите этот код и храните отдельно от устройства. Он понадобится, если вы забудете пароль. Больше он показан не будет.</string>
-    <string name="lock_code_saved">Я записал код</string>
+    <string name="lock_code_text">Сохраните этот код — запишите или скопируйте в менеджер паролей — и храните отдельно от устройства. Он понадобится, если вы забудете пароль. Больше он показан не будет.</string>
+    <string name="lock_code_saved">Я сохранил код</string>
     <string name="lock_done">Готово</string>
+    <string name="lock_copy">Копировать</string>
+    <string name="lock_copied">Скопировано</string>
     <string name="lock_back">Назад</string>
 
     <string name="security_title">Защита</string>
@@ -49,10 +51,10 @@
     <string name="security_set_password">Задать пароль</string>
     <string name="security_change_password">Сменить пароль</string>
     <string name="security_remove_password">Убрать пароль</string>
-    <string name="security_lock_now">Заблокировать сейчас</string>
     <string name="security_timeout">Снова спрашивать вход</string>
     <string name="timeout_immediate">Сразу</string>
     <string name="timeout_1">Через 1 минуту</string>
     <string name="timeout_5">Через 5 минут</string>
     <string name="timeout_15">Через 15 минут</string>
+    <string name="timeout_never">Не блокировать по времени</string>
 </resources>

@@ -93,7 +93,9 @@ class PasswordVaultTest {
     }
 
     @Test
-    fun tooShortPasswordIsRejected() {
-        assertFailsWith<IllegalArgumentException> { vault.setPassword("123") }
+    fun anyNonEmptyPasswordIsAccepted() {
+        vault.setPassword("1")
+        assertEquals(CheckResult.Ok, vault.verify("1"))
+        assertFailsWith<IllegalArgumentException> { vault.setPassword("") }
     }
 }

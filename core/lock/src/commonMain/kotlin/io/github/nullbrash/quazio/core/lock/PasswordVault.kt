@@ -101,7 +101,8 @@ class PasswordVault(private val db: QuazioDatabase, private val now: () -> Long)
     }
 
     companion object {
-        const val MIN_LENGTH = 4
+        // Требований к паролю нет (решение пользователя): только не пустой.
+        const val MIN_LENGTH = 1
         const val MAX_LENGTH = 128
         const val FREE_ATTEMPTS = 5
 

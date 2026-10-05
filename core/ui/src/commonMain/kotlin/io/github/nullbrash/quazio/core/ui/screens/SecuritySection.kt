@@ -35,7 +35,6 @@ import io.github.nullbrash.quazio.core.ui.res.lock_current_password
 import io.github.nullbrash.quazio.core.ui.res.lock_done
 import io.github.nullbrash.quazio.core.ui.res.lock_new_password
 import io.github.nullbrash.quazio.core.ui.res.security_change_password
-import io.github.nullbrash.quazio.core.ui.res.security_lock_now
 import io.github.nullbrash.quazio.core.ui.res.security_mode_device
 import io.github.nullbrash.quazio.core.ui.res.security_mode_open
 import io.github.nullbrash.quazio.core.ui.res.security_mode_password
@@ -48,6 +47,7 @@ import io.github.nullbrash.quazio.core.ui.res.timeout_1
 import io.github.nullbrash.quazio.core.ui.res.timeout_15
 import io.github.nullbrash.quazio.core.ui.res.timeout_5
 import io.github.nullbrash.quazio.core.ui.res.timeout_immediate
+import io.github.nullbrash.quazio.core.ui.res.timeout_never
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
@@ -115,7 +115,6 @@ fun SecuritySection(services: AppServices, deviceAuth: DeviceAuthenticator?) {
                     Text(stringResource(option.label), modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 6.dp))
                 }
             }
-            TextButton(onClick = { services.lock.lockNow() }) { Text(stringResource(Res.string.security_lock_now)) }
         }
     }
 
@@ -140,6 +139,7 @@ private val LockTimeout.label: StringResource
         LockTimeout.MIN_1 -> Res.string.timeout_1
         LockTimeout.MIN_5 -> Res.string.timeout_5
         LockTimeout.MIN_15 -> Res.string.timeout_15
+        LockTimeout.NEVER -> Res.string.timeout_never
     }
 
 /** Задать / сменить / убрать пароль. [onDone] получает новый код восстановления (null — пароль убран). */

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -20,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -35,6 +38,8 @@ import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.lock_blocked
 import io.github.nullbrash.quazio.core.ui.res.lock_code_saved
 import io.github.nullbrash.quazio.core.ui.res.lock_code_text
+import io.github.nullbrash.quazio.core.ui.res.lock_copied
+import io.github.nullbrash.quazio.core.ui.res.lock_copy
 import io.github.nullbrash.quazio.core.ui.res.lock_done
 import io.github.nullbrash.quazio.core.ui.res.lock_mismatch
 import io.github.nullbrash.quazio.core.ui.res.lock_recovery_code
@@ -111,17 +116,28 @@ internal fun NewPasswordFields(
     SubmitField(repeat, onRepeat, stringResource(Res.string.lock_repeat_password), onSubmit)
 }
 
-/** Показ кода восстановления — один раз; закрыть можно, только отметив, что код записан. */
+/**
+ * Показ кода восстановления — один раз; закрыть можно, только отметив, что код сохранён.
+ * Код можно выделить и скопировать, чтобы сохранить в менеджер паролей.
+ */
 @Composable
 internal fun RecoveryCodeDialog(code: String, onDone: () -> Unit) {
     var saved by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    @Suppress("DEPRECATION") // новый Clipboard в Compose пока требует платформенного ClipEntry
+    val clipboard = LocalClipboardManager.current
     AlertDialog(
         onDismissRequest = {},
         title = { Text(stringResource(Res.string.lock_recovery_code)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(Res.string.lock_code_text))
-                Text(code, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
+                SelectionContainer {
+                    Text(code, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
+                }
+                TextButton(onClick = { clipboard.setText(AnnotatedString(code)); copied = true }) {
+                    Text(stringResource(if (copied) Res.string.lock_copied else Res.string.lock_copy))
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = saved, onCheckedChange = { saved = it })
                     Text(stringResource(Res.string.lock_code_saved))

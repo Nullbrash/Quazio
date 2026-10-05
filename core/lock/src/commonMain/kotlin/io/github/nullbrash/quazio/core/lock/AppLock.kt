@@ -10,7 +10,9 @@ enum class LockTimeout(val id: String, val millis: Long) {
     IMMEDIATE("0", 0),
     MIN_1("1", 60_000),
     MIN_5("5", 5 * 60_000),
-    MIN_15("15", 15 * 60_000);
+    MIN_15("15", 15 * 60_000),
+    /** Только системная блокировка (Windows) или перезапуск приложения. */
+    NEVER("never", Long.MAX_VALUE);
 
     companion object {
         val DEFAULT = MIN_5

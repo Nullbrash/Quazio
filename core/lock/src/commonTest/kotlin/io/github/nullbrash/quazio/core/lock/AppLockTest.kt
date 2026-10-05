@@ -56,6 +56,18 @@ class AppLockTest {
     }
 
     @Test
+    fun neverTimeoutKeepsItOpenUntilSystemLock() {
+        lock.setTimeout(LockTimeout.NEVER)
+        lock.unlock()
+        lock.onBackground()
+        now += 365L * 24 * 3600_000
+        lock.onForeground()
+        assertFalse(lock.isLocked)
+        lock.lockNow() // блокировка Windows
+        assertTrue(lock.isLocked)
+    }
+
+    @Test
     fun systemLockClosesImmediately() {
         lock.unlock()
         lock.lockNow()
