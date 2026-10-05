@@ -86,16 +86,10 @@ internal fun CategoriesScreen(services: AppServices, accountId: String, onBack: 
             FilterChip(selected = kind == CategoryKind.EXPENSE, onClick = { kind = CategoryKind.EXPENSE }, label = { Text(stringResource(Res.string.fin_expense)) })
             FilterChip(selected = kind == CategoryKind.INCOME, onClick = { kind = CategoryKind.INCOME }, label = { Text(stringResource(Res.string.fin_income)) })
         }
+        val guides = remember(nodes) { treeGuides(nodes) }
         LazyColumn(Modifier.fillMaxSize()) {
             items(nodes, key = { it.id }) { node ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { dialog = CategoryDialog.Rename(node) }
-                        .padding(start = (16 + node.depth * 24).dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ColorDot(node.color)
-                    Spacer(Modifier.width(12.dp))
-                    Text(node.name, modifier = Modifier.weight(1f), style = if (node.depth == 0) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium)
+                CategoryTreeRow(node, guides[node.id], Modifier.clickable { dialog = CategoryDialog.Rename(node) }) {
                     IconButton(onClick = { dialog = CategoryDialog.Add(node) }) { Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.cat_add_child)) }
                 }
             }

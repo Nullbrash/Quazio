@@ -115,6 +115,8 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
     var pickDate by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    // Новая операция начинается с суммы — калькулятор сразу (как в Wallet по нажатию на сумму).
+    var showCalc by remember { mutableStateOf(txnId == null) }
 
     LaunchedEffect(txnId) {
         if (txnId == null) return@LaunchedEffect
@@ -195,15 +197,12 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
                     FilterChip(selected = kind == k, onClick = { kind = k; error = null }, label = { Text(stringResource(k.label)) })
                 }
             }
-            FinField(
-                value = amountText,
-                onValueChange = { amountText = it; error = null },
-                label = stringResource(if (kind == TxnKind.ADJUSTMENT) Res.string.txn_amount_adjustment else Res.string.txn_amount),
-                keyboardType = KeyboardType.Decimal,
-                isError = error != null,
-                onSubmit = save,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column {
+                Text(stringResource(if (kind == TxnKind.ADJUSTMENT) Res.string.txn_amount_adjustment else Res.string.txn_amount), style = MaterialTheme.typography.labelLarge)
+                OutlinedButton(onClick = { showCalc = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(amountText.ifEmpty { "0" } + " ₽", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.fillMaxWidth())
+                }
+            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             LabeledPicker(stringResource(Res.string.txn_account), activeAccounts.firstOrNull { it.id == finAccountId }?.name ?: "—") { dismiss ->
@@ -253,6 +252,14 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
         }
     }
 
+    if (showCalc) {
+        CalculatorDialog(
+            initial = amountText,
+            allowNegative = kind == TxnKind.ADJUSTMENT,
+            onDone = { amountText = formatAmountForEdit(it); error = null; showCalc = false },
+            onDismiss = { showCalc = false },
+        )
+    }
     if (pickCategory) {
         CategoryPickerDialog(
             categories = data.categories.filter { it.kind == if (kind == TxnKind.INCOME) CategoryKind.INCOME else CategoryKind.EXPENSE },

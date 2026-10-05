@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.res.Res
+import io.github.nullbrash.quazio.core.ui.res.acc_debt_i_owe
+import io.github.nullbrash.quazio.core.ui.res.acc_debt_owed_to_me
 import io.github.nullbrash.quazio.core.ui.res.fin_add_account
 import io.github.nullbrash.quazio.core.ui.res.fin_add_txn
 import io.github.nullbrash.quazio.core.ui.res.fin_archived
@@ -55,6 +57,7 @@ import io.github.nullbrash.quazio.core.ui.res.fin_net
 import io.github.nullbrash.quazio.core.ui.res.fin_no_category
 import io.github.nullbrash.quazio.feature.finance.CategoryNode
 import io.github.nullbrash.quazio.feature.finance.FinAccount
+import io.github.nullbrash.quazio.feature.finance.FinAccountType
 import io.github.nullbrash.quazio.feature.finance.Tag
 import io.github.nullbrash.quazio.feature.finance.Totals
 import io.github.nullbrash.quazio.feature.finance.Transaction
@@ -234,11 +237,18 @@ private fun AccountCard(account: FinAccount, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                formatMoney(account.balance),
-                style = MaterialTheme.typography.titleSmall,
-                color = if (account.balance.isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            )
+            if (account.type == FinAccountType.DEBT) {
+                // Долг: подпись вместо знака — «мне должны» / «я должен».
+                val owedToMe = !account.balance.isNegative
+                Text(stringResource(if (owedToMe) Res.string.acc_debt_owed_to_me else Res.string.acc_debt_i_owe), style = MaterialTheme.typography.labelSmall)
+                Text(formatMoney(if (owedToMe) account.balance else -account.balance), style = MaterialTheme.typography.titleSmall)
+            } else {
+                Text(
+                    formatMoney(account.balance),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (account.balance.isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                )
+            }
             if (account.archived) Text(stringResource(Res.string.fin_archived), style = MaterialTheme.typography.labelSmall)
         }
     }

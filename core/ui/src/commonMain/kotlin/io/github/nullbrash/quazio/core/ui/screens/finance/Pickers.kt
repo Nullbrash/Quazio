@@ -66,7 +66,12 @@ internal fun CategoryPickerDialog(categories: List<CategoryNode>, selectedId: St
         text = {
             LazyColumn(Modifier.heightIn(max = 480.dp)) {
                 item { CategoryLine(null, stringResource(Res.string.fin_no_category), 0, selectedId == null) { onPick(null) } }
-                items(categories, key = { it.id }) { c -> CategoryLine(c.color, c.name, c.depth, c.id == selectedId) { onPick(c.id) } }
+                val guides = treeGuides(categories)
+                items(categories, key = { it.id }) { c ->
+                    CategoryTreeRow(c, guides[c.id], Modifier.clickable { onPick(c.id) }) {
+                        RadioButton(selected = c.id == selectedId, onClick = null)
+                    }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_close)) } },

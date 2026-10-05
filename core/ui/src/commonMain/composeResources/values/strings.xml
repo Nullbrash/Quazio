@@ -93,6 +93,11 @@
     <string name="acc_in_total">Учитывать в итоге</string>
     <string name="acc_archived">В архиве</string>
     <string name="acc_delete">Удалить счёт</string>
+    <string name="acc_debt_owed_to_me">Мне должны</string>
+    <string name="acc_debt_i_owe">Я должен</string>
+    <string name="acc_debt_amount">Сумма долга</string>
+    <string name="acc_debt_hint">Потом: дали ещё в долг или вернули свой — перевод с карты на этот счёт; вернули вам или заняли ещё — перевод с этого счёта на карту.</string>
+    <string name="calc_title">Введите сумму</string>
     <string name="acc_has_txns">У счёта есть операции — его можно только убрать в архив</string>
     <string name="acc_type_card">Карта</string>
     <string name="acc_type_savings">Накопительный счёт / вклад</string>

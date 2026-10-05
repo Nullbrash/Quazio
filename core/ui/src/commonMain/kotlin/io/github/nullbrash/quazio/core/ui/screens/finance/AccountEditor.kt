@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -25,6 +26,10 @@ import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.acc_archived
 import io.github.nullbrash.quazio.core.ui.res.acc_credit_limit
+import io.github.nullbrash.quazio.core.ui.res.acc_debt_amount
+import io.github.nullbrash.quazio.core.ui.res.acc_debt_hint
+import io.github.nullbrash.quazio.core.ui.res.acc_debt_i_owe
+import io.github.nullbrash.quazio.core.ui.res.acc_debt_owed_to_me
 import io.github.nullbrash.quazio.core.ui.res.acc_delete
 import io.github.nullbrash.quazio.core.ui.res.acc_edit
 import io.github.nullbrash.quazio.core.ui.res.acc_has_txns
@@ -61,6 +66,8 @@ internal fun AccountEditor(services: AppServices, accountId: String, account: Fi
     var includeInTotal by remember { mutableStateOf(account?.includeInTotal ?: type.defaultIncludeInTotal) }
     var touchedInclude by remember { mutableStateOf(account != null) }
     var archived by remember { mutableStateOf(account?.archived ?: false) }
+    // Долг: знак остатка — направление (плюс — мне должны). В поле — сумма без знака.
+    var owedToMe by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val badAmount = stringResource(Res.string.txn_bad_amount)
     val hasTxns = stringResource(Res.string.acc_has_txns)
@@ -68,11 +75,14 @@ internal fun AccountEditor(services: AppServices, accountId: String, account: Fi
     // Начальный остаток существующего счёта подгружаем отдельно: в списке — уже текущий баланс.
     androidx.compose.runtime.LaunchedEffect(account?.id) {
         val a = account ?: return@LaunchedEffect
-        opening = withContext(Dispatchers.IO) { services.finance.openingBalance(a.id) }.let(::formatAmountForEdit)
+        val minor = withContext(Dispatchers.IO) { services.finance.openingBalance(a.id) }
+        owedToMe = minor >= 0
+        opening = formatAmountForEdit(if (a.type == FinAccountType.DEBT && minor < 0) -minor else minor)
     }
 
     val save: () -> Unit = save@{
-        val openingMinor = parseAmountMinor(opening.ifBlank { "0" }) ?: run { error = badAmount; return@save }
+        val typed = parseAmountMinor(opening.ifBlank { "0" }) ?: run { error = badAmount; return@save }
+        val openingMinor = if (type == FinAccountType.DEBT) (if (owedToMe) 1 else -1) * kotlin.math.abs(typed) else typed
         val limitMinor = if (type == FinAccountType.CREDIT_CARD && limit.isNotBlank()) parseAmountMinor(limit) ?: run { error = badAmount; return@save } else null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -105,7 +115,18 @@ internal fun AccountEditor(services: AppServices, accountId: String, account: Fi
                         }
                     }
                 }
-                FinField(opening, { opening = it; error = null }, stringResource(Res.string.acc_opening), Modifier.fillMaxWidth(), KeyboardType.Decimal, onSubmit = save)
+                if (type == FinAccountType.DEBT) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = owedToMe, onClick = { owedToMe = true }, label = { Text(stringResource(Res.string.acc_debt_owed_to_me)) })
+                        FilterChip(selected = !owedToMe, onClick = { owedToMe = false }, label = { Text(stringResource(Res.string.acc_debt_i_owe)) })
+                    }
+                }
+                FinField(
+                    opening, { opening = it; error = null },
+                    stringResource(if (type == FinAccountType.DEBT) Res.string.acc_debt_amount else Res.string.acc_opening),
+                    Modifier.fillMaxWidth(), KeyboardType.Decimal, onSubmit = save,
+                )
+                if (type == FinAccountType.DEBT) Text(stringResource(Res.string.acc_debt_hint), style = MaterialTheme.typography.bodySmall)
                 if (type == FinAccountType.CREDIT_CARD) {
                     FinField(limit, { limit = it; error = null }, stringResource(Res.string.acc_credit_limit), Modifier.fillMaxWidth(), KeyboardType.Decimal, onSubmit = save)
                 }
