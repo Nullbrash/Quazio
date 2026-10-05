@@ -1,12 +1,11 @@
 package io.github.nullbrash.quazio.core.ui.screens.finance
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.github.nullbrash.quazio.core.accounts.AccountService
@@ -15,15 +14,21 @@ import io.github.nullbrash.quazio.core.db.QuazioDatabase
 import io.github.nullbrash.quazio.core.lock.AppLock
 import io.github.nullbrash.quazio.core.lock.PasswordVault
 import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.IncomingText
+import io.github.nullbrash.quazio.core.ui.LocalIncomingText
 import io.github.nullbrash.quazio.feature.finance.FinAccountType
 import io.github.nullbrash.quazio.feature.finance.FinanceService
 import io.github.nullbrash.quazio.feature.finance.TxnKind
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Быстрый ввод целиком: поле → черновик / список черновиков → сохранение в настоящую базу (в памяти). */
+/**
+ * Текст «В учёт Quazio» (меню выделенного текста / «Поделиться» на Android) → черновик
+ * или список черновиков → сохранение в настоящую базу (в памяти), без окна.
+ */
 @OptIn(ExperimentalTestApi::class)
 class QuickInputUiTest {
 
@@ -37,6 +42,7 @@ class QuickInputUiTest {
         accounts = accounts, finance = finance, vault = PasswordVault(db, System::currentTimeMillis),
         lock = AppLock(System::currentTimeMillis), deviceName = "ПК", platform = "windows", passwordRequired = false,
     )
+    private val incoming = IncomingText()
 
     @AfterTest
     fun close() = driver.close()
@@ -45,11 +51,10 @@ class QuickInputUiTest {
 
     @Test
     fun phraseOpensFilledDraftAndSavesIt() = runComposeUiTest {
-        setContent { MaterialTheme { FinanceScreen(services) } }
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
-        onNode(hasSetTextAction()).performTextInput("такси 450")
-        onNodeWithContentDescription("Разобрать").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(androidx.compose.ui.test.hasText("Черновик")).fetchSemanticsNodes().isNotEmpty() }
+        incoming.offer("такси 450")
+        setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Черновик")).fetchSemanticsNodes().isNotEmpty() }
+        assertNull(incoming.text.value) // разобран один раз
         onNodeWithText("Сохранить").performClick()
         waitUntil(timeoutMillis = 10_000) { all().isNotEmpty() }
 
@@ -63,11 +68,12 @@ class QuickInputUiTest {
     @Test
     fun postShowsDraftListAndSavesAll() = runComposeUiTest {
         val piggy = finance.createAccount(accountId, "Копилка", FinAccountType.SAVINGS, openingBalanceMinor = 5_000_000)
-        setContent { MaterialTheme { FinanceScreen(services) } }
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
-        onNode(hasSetTextAction()).performTextInput("Забрал:\n14.07: - 2 000р.\n18.07: - 500р.\n\n= - 2 500р.\n\nОстаток: 47 500р.")
-        onNodeWithContentDescription("Разобрать").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(androidx.compose.ui.test.hasText("Сохранить (2)")).fetchSemanticsNodes().isNotEmpty() }
+        setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
+        // Текст пришёл, когда экран уже открыт (второе «В учёт Quazio»).
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Копилка", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        incoming.offer("Забрал:\n14.07: - 2 000р.\n18.07: - 500р.\n\n= - 2 500р.\n\nОстаток: 47 500р.")
+        waitUntil("текст принят экраном", timeoutMillis = 10_000) { incoming.text.value == null }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Сохранить (2)")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText("— сходится", substring = true).assertExists() // в суммах неразрывные пробелы
         onNodeWithText("Сходится").assertExists()
         onNodeWithText("Сохранить (2)").performClick()
@@ -75,5 +81,13 @@ class QuickInputUiTest {
 
         assertTrue(all().all { it.kind == TxnKind.TRANSFER && it.finAccountId == piggy })
         assertEquals(4_750_000, finance.accounts(accountId).first { it.id == piggy }.balance.minor)
+    }
+
+    @Test
+    fun textWithoutOperationsSaysSo() = runComposeUiTest {
+        incoming.offer("Всем спасибо, всем пока!")
+        setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Операций не нашлось", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(all().isEmpty())
     }
 }

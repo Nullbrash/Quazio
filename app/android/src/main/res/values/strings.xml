@@ -2,4 +2,5 @@
 <resources>
     <string name="auth_title">Вход в Quazio</string>
     <string name="auth_subtitle">Подтвердите, что это вы</string>
+    <string name="quick_text_label">В учёт Quazio</string>
 </resources>

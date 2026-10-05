@@ -12,14 +12,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,12 +29,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
@@ -47,9 +39,7 @@ import io.github.nullbrash.quazio.core.ui.res.quick_adjust
 import io.github.nullbrash.quazio.core.ui.res.quick_balance
 import io.github.nullbrash.quazio.core.ui.res.quick_balance_ok
 import io.github.nullbrash.quazio.core.ui.res.quick_balance_unknown
-import io.github.nullbrash.quazio.core.ui.res.quick_hint
 import io.github.nullbrash.quazio.core.ui.res.quick_save
-import io.github.nullbrash.quazio.core.ui.res.quick_send
 import io.github.nullbrash.quazio.core.ui.res.quick_skipped_hint
 import io.github.nullbrash.quazio.core.ui.res.quick_title
 import io.github.nullbrash.quazio.core.ui.res.quick_total_bad
@@ -175,29 +165,6 @@ internal fun QuickDraft.toPrefill(tagIds: Set<String>, zone: TimeZone): EditorPr
     return EditorPrefill(
         kind = kind, sign = sign, amountMinor = amountMinor, finAccountId = accountId, secondAccountId = secondAccountId,
         categoryId = categoryId, merchant = merchant.orEmpty(), description = description, tagIds = tagIds, dateTime = at,
-    )
-}
-
-/** Поле быстрого ввода над списком операций. На ПК Enter — разобрать, Shift+Enter — новая строка. */
-@Composable
-internal fun QuickInputField(text: String, onText: (String) -> Unit, submitOnEnter: Boolean, onSubmit: () -> Unit) {
-    OutlinedTextField(
-        value = text,
-        onValueChange = onText,
-        placeholder = { Text(stringResource(Res.string.quick_hint)) },
-        maxLines = 6,
-        trailingIcon = {
-            IconButton(onClick = onSubmit, enabled = text.isNotBlank()) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(Res.string.quick_send))
-            }
-        },
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).onPreviewKeyEvent { e ->
-            val enter = e.key == Key.Enter || e.key == Key.NumPadEnter
-            if (submitOnEnter && enter && !e.isShiftPressed && e.type == KeyEventType.KeyDown) {
-                if (text.isNotBlank()) onSubmit()
-                true
-            } else false
-        },
     )
 }
 

@@ -110,8 +110,6 @@
     <string name="fin_debt_return_to_org">Верну %1$s</string>
     <string name="fin_tags">Метки</string>
     <string name="fin_more">Ещё</string>
-    <string name="quick_hint">Быстрый ввод: «такси 450», «кофе 180 вчера»</string>
-    <string name="quick_send">Разобрать</string>
     <string name="quick_title">Быстрый ввод</string>
     <string name="quick_draft">Черновик</string>
     <string name="quick_save">Сохранить (%1$d)</string>

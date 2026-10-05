@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.LocalFileSaver
+import io.github.nullbrash.quazio.core.ui.LocalIncomingText
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.fin_add_account
 import io.github.nullbrash.quazio.core.ui.res.fin_add_txn
@@ -121,8 +123,8 @@ fun FinanceScreen(services: AppServices) {
     var accountDialog by remember { mutableStateOf<FinAccount?>(null) }
     var newAccountDialog by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
-    // Текст быстрого ввода живёт до сохранения: отменили черновик — фразу можно поправить.
-    var quickText by remember { mutableStateOf("") }
+    val incoming = LocalIncomingText.current
+    val incomingText = incoming?.text?.collectAsState()?.value
     val fileSaver = LocalFileSaver.current
     val scope = rememberCoroutineScope()
 
@@ -147,6 +149,30 @@ fun FinanceScreen(services: AppServices) {
     }
     val d = data ?: return
 
+    // Текст «В учёт Quazio»: одна операция — окно-черновик, несколько строк — список черновиков.
+    suspend fun openQuick(text: String) {
+        val zone = currentZone()
+        val today = localDateTime(nowMillis(), zone.id).date
+        val (lines, prefills) = withContext(Dispatchers.IO) {
+            val lines = QuickParser.parse(text, services.finance.quickVocabulary(d.accountId), today)
+            lines to lines.map { line ->
+                (line as? QuickLine.Operation)?.draft?.let { it.toPrefill(services.finance.tagIdsFor(d.accountId, it.tags), zone) }
+            }
+        }
+        val ops = lines.filterIsInstance<QuickLine.Operation>()
+        view = when {
+            ops.isEmpty() -> { exportMessage = getString(Res.string.quick_none); FinanceView.Main }
+            lines.size == 1 -> FinanceView.QuickEditor(ops.single().draft, prefills.single()!!)
+            else -> FinanceView.QuickReview(lines, prefills)
+        }
+    }
+    LaunchedEffect(incomingText) {
+        val text = incomingText ?: return@LaunchedEffect
+        incoming?.consume()
+        // consume() меняет ключ этого эффекта и отменил бы его — разбор идёт в области экрана.
+        scope.launch { openQuick(text) }
+    }
+
     when (val v = view) {
         is FinanceView.Editor -> TransactionEditor(
             services = services,
@@ -170,7 +196,7 @@ fun FinanceScreen(services: AppServices) {
             onDraft = { draft ->
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runCatching { saveQuickDraft(services, d, v.original, draft) } }
-                    result.onSuccess { quickText = ""; view = FinanceView.Main; reload++ }
+                    result.onSuccess { view = FinanceView.Main; reload++ }
                         .onFailure { exportMessage = it.message; view = FinanceView.Main }
                 }
             },
@@ -178,10 +204,7 @@ fun FinanceScreen(services: AppServices) {
         )
         is FinanceView.QuickReview -> QuickReviewScreen(services, d, v.lines, v.prefills) { saved ->
             view = FinanceView.Main
-            if (saved) {
-                quickText = ""
-                reload++
-            }
+            if (saved) reload++
         }
         FinanceView.Main -> Box(Modifier.fillMaxSize()) {
             FinanceMain(
@@ -193,28 +216,6 @@ fun FinanceScreen(services: AppServices) {
                 onNewAccount = { newAccountDialog = true },
                 onCategories = { view = FinanceView.Categories },
                 onTags = { view = FinanceView.Tags },
-                quickText = quickText,
-                onQuickText = { quickText = it },
-                submitOnEnter = services.platform != "android",
-                onQuick = {
-                    scope.launch {
-                        val zone = currentZone()
-                        val today = localDateTime(nowMillis(), zone.id).date
-                        val parsed = withContext(Dispatchers.IO) {
-                            val lines = QuickParser.parse(quickText, services.finance.quickVocabulary(d.accountId), today)
-                            lines to lines.map { line ->
-                                (line as? QuickLine.Operation)?.draft?.let { it.toPrefill(services.finance.tagIdsFor(d.accountId, it.tags), zone) }
-                            }
-                        }
-                        val (lines, prefills) = parsed
-                        val ops = lines.filterIsInstance<QuickLine.Operation>()
-                        view = when {
-                            ops.isEmpty() -> { exportMessage = getString(Res.string.quick_none); FinanceView.Main }
-                            lines.size == 1 -> FinanceView.QuickEditor(ops.single().draft, prefills.single()!!)
-                            else -> FinanceView.QuickReview(lines, prefills)
-                        }
-                    }
-                },
                 onExport = fileSaver?.let { saver ->
                     {
                         scope.launch {
@@ -275,10 +276,6 @@ private fun FinanceMain(
     onNewAccount: () -> Unit,
     onCategories: () -> Unit,
     onTags: () -> Unit,
-    quickText: String,
-    onQuickText: (String) -> Unit,
-    submitOnEnter: Boolean,
-    onQuick: () -> Unit,
     onExport: (() -> Unit)?,
 ) {
     val colors = data.categories.associate { it.id to it.color }
@@ -326,7 +323,6 @@ private fun FinanceMain(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
-            QuickInputField(quickText, onQuickText, submitOnEnter, onQuick)
             HorizontalDivider(Modifier.padding(top = 8.dp))
         }
         if (data.transactions.isEmpty()) {

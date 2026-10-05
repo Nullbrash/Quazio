@@ -22,6 +22,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -65,7 +67,8 @@ fun QuazioApp(
     openServices: () -> AppServices,
     deviceAuth: DeviceAuthenticator? = null,
     fileSaver: FileSaver? = null,
-) = CompositionLocalProvider(LocalFileSaver provides fileSaver) {
+    incoming: IncomingText? = null,
+) = CompositionLocalProvider(LocalFileSaver provides fileSaver, LocalIncomingText provides incoming) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
         val startup by produceState<Startup>(Startup.Loading) {
             value = try {
@@ -99,6 +102,9 @@ private fun CenteredText(text: String) {
 @Composable
 private fun Shell(versionName: String, services: AppServices, deviceAuth: DeviceAuthenticator?) {
     var current by rememberSaveable { mutableStateOf(Destination.FINANCE) }
+    // Прислали текст «В учёт Quazio» — его разбирают финансы.
+    val incomingText = LocalIncomingText.current?.text?.collectAsState()?.value
+    LaunchedEffect(incomingText) { if (incomingText != null) current = Destination.FINANCE }
 
     // Уход в фон и возвращение — для повторного входа (одинаково на телефоне и ПК).
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { services.lock.onBackground() }
