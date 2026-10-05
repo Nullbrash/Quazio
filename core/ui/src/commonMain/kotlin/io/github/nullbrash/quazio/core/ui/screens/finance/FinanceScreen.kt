@@ -117,7 +117,7 @@ private sealed interface FinanceView {
 }
 
 @Composable
-fun FinanceScreen(services: AppServices) {
+fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.LocalDate) -> Unit)? = null) {
     var month by remember { mutableStateOf(currentMonth()) }
     var reload by remember { mutableIntStateOf(0) }
     var data by remember { mutableStateOf<FinanceData?>(null) }
@@ -222,6 +222,7 @@ fun FinanceScreen(services: AppServices) {
                 onNewAccount = { newAccountDialog = true },
                 onCategories = { view = FinanceView.Categories },
                 onTags = { view = FinanceView.Tags },
+                onMonthClick = onOpenCalendar?.let { open -> { open(kotlinx.datetime.LocalDate(month.year, month.month, 1)) } },
                 onAccountsOrder = { view = FinanceView.AccountsOrder },
                 onExport = fileSaver?.let { saver ->
                     {
@@ -283,6 +284,7 @@ private fun FinanceMain(
     onNewAccount: () -> Unit,
     onCategories: () -> Unit,
     onTags: () -> Unit,
+    onMonthClick: (() -> Unit)?,
     onAccountsOrder: () -> Unit,
     onExport: (() -> Unit)?,
 ) {
@@ -294,7 +296,11 @@ private fun FinanceMain(
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { onMonth(month.previous()) }) { Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null) }
-                Text(monthTitle(month), style = MaterialTheme.typography.titleLarge)
+                // Нажатие на месяц — этот месяц в календаре (пожелание пользователя).
+                Text(
+                    monthTitle(month), style = MaterialTheme.typography.titleLarge,
+                    modifier = if (onMonthClick != null) Modifier.clickable(onClick = onMonthClick) else Modifier,
+                )
                 IconButton(onClick = { onMonth(month.next()) }) { Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null) }
                 Spacer(Modifier.weight(1f))
                 // Три кнопки в шапке не помещаются на телефоне — редкие действия в меню.

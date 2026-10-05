@@ -88,6 +88,11 @@ class AndroidCalendarSourceTest {
         assertEquals(day(1) + HOUR, e.end)
         assertEquals(false, e.recurring)
         assertEquals(listOf(10, 60), source.reminders(id))
+        source.event(id)!!.let {
+            assertEquals("Встреча", it.title)
+            assertEquals(day(1) + HOUR, it.end)
+            assertEquals(listOf(10, 60), it.reminderMinutes)
+        }
 
         source.update(id, EventDraft(calendarId, "Встреча (перенос)", day(2), day(2) + 2 * HOUR, timeZone = "Europe/Moscow", reminderMinutes = listOf(30)))
         val moved = eventsOfTestCalendar().single()
@@ -114,6 +119,12 @@ class AndroidCalendarSourceTest {
             EventDraft(calendarId, "Зарядка", day(1), day(1) + HOUR / 2, timeZone = "Europe/Moscow", rrule = "FREQ=DAILY;COUNT=4"),
         )
         if (synced) markSynced(id)
+        // Серия читается целиком: начало серии и длительность, а не конкретное повторение.
+        source.event(id)!!.let {
+            assertEquals(day(1), it.start)
+            assertEquals(day(1) + HOUR / 2, it.end)
+            assertEquals("FREQ=DAILY;COUNT=4", it.rrule)
+        }
         val series = eventsOfTestCalendar()
         assertEquals(4, series.size)
         assertTrue(series.all { it.recurring && it.eventId == id })

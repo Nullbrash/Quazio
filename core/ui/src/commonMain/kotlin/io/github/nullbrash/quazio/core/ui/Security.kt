@@ -38,5 +38,7 @@ fun gateMode(deviceAuthAvailable: Boolean, hasPassword: Boolean, passwordRequire
 val Destination.isSensitive: Boolean
     get() = when (this) {
         Destination.FINANCE -> true
+        // Календарь открыт и без входа (решение пользователя 2026-10-05: закрыты только финансы, здоровье, статистика).
+        Destination.CALENDAR -> false
         Destination.SETTINGS -> false
     }

@@ -32,6 +32,16 @@ class CalendarPrefs(private val store: KeyValueStore) {
         get() = store.get(KEY_DEFAULT)?.takeIf { it.isNotEmpty() }
         set(value) = store.put(KEY_DEFAULT, value.orEmpty())
 
+    /** Циферблат в приложении: 24 часа или (по умолчанию) 12 «скользящих», как на виджете. */
+    var dial24: Boolean
+        get() = store.get(KEY_DIAL_24) == "1"
+        set(value) = store.put(KEY_DIAL_24, if (value) "1" else "0")
+
+    /** Неделя с воскресенья; по умолчанию — с понедельника (решение пользователя). */
+    var weekStartsSunday: Boolean
+        get() = store.get(KEY_WEEK_SUNDAY) == "1"
+        set(value) = store.put(KEY_WEEK_SUNDAY, if (value) "1" else "0")
+
     fun isShown(calendar: CalendarInfo): Boolean = choices[calendar.id] ?: calendar.visibleInSystem
 
     fun shown(calendars: List<CalendarInfo>): List<CalendarInfo> = calendars.filter(::isShown)
@@ -52,5 +62,7 @@ class CalendarPrefs(private val store: KeyValueStore) {
         const val KEY_ENABLED = "calendar.enabled"
         const val KEY_CHOICES = "calendar.choices"
         const val KEY_DEFAULT = "calendar.default"
+        const val KEY_DIAL_24 = "calendar.dial_24"
+        const val KEY_WEEK_SUNDAY = "calendar.week_sunday"
     }
 }

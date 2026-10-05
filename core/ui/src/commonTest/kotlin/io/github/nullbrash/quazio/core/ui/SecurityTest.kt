@@ -29,5 +29,6 @@ class SecurityTest {
     fun onlyFinanceIsSensitiveForNow() {
         assertTrue(Destination.FINANCE.isSensitive)
         assertFalse(Destination.SETTINGS.isSensitive)
+        assertFalse(Destination.CALENDAR.isSensitive)
     }
 }

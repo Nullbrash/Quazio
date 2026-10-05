@@ -187,6 +187,49 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
         cr.update(uri, values, null, null)
     }
 
+    override fun event(eventId: String): EventDraft? {
+        val projection = arrayOf(
+            Events.CALENDAR_ID, Events.TITLE, Events.DESCRIPTION, Events.EVENT_LOCATION, Events.DTSTART, Events.DTEND,
+            Events.DURATION, Events.ALL_DAY, Events.EVENT_TIMEZONE, Events.RRULE, Events.EVENT_COLOR_KEY,
+        )
+        val draft = cr.query(ContentUris.withAppendedId(Events.CONTENT_URI, eventId.toLong()), projection, null, null, null).use { c ->
+            if (c == null || !c.moveToFirst()) return null
+            val start = c.getLong(4)
+            // У повторяющегося событий конца нет — только длительность.
+            val end = if (c.isNull(5)) start + (parseDuration(c.str(6)) ?: 0L) else c.getLong(5)
+            EventDraft(
+                calendarId = c.getLong(0).toString(),
+                title = c.str(1).orEmpty(),
+                start = start,
+                end = maxOf(end, start),
+                allDay = c.getInt(7) == 1,
+                timeZone = c.str(8) ?: java.util.TimeZone.getDefault().id,
+                location = c.str(3).orEmpty(),
+                description = c.str(2).orEmpty(),
+                rrule = c.str(9)?.takeIf { it.isNotBlank() },
+                colorKey = c.str(10)?.takeIf { it.isNotBlank() },
+            )
+        }
+        return draft.copy(reminderMinutes = reminders(eventId))
+    }
+
+    override fun eventColors(calendarId: String): List<EventColor> {
+        val (account, type) = cr.query(
+            ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId.toLong()),
+            arrayOf(Calendars.ACCOUNT_NAME, Calendars.ACCOUNT_TYPE), null, null, null,
+        ).use { c -> if (c == null || !c.moveToFirst()) return emptyList() else c.str(0) to c.str(1) }
+        return cr.query(
+            CalendarContract.Colors.CONTENT_URI,
+            arrayOf(CalendarContract.Colors.COLOR_KEY, CalendarContract.Colors.COLOR),
+            "${CalendarContract.Colors.ACCOUNT_NAME} = ? AND ${CalendarContract.Colors.ACCOUNT_TYPE} = ? AND ${CalendarContract.Colors.COLOR_TYPE} = ?",
+            arrayOf(account.orEmpty(), type.orEmpty(), CalendarContract.Colors.TYPE_EVENT.toString()),
+            null,
+        ).use { c ->
+            c ?: return emptyList()
+            buildList { while (c.moveToNext()) add(EventColor(c.getString(0), c.getInt(1).toLong() and 0xFFFFFFFFL)) }
+        }
+    }
+
     private fun exceptionUri(eventId: String) = ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, eventId.toLong())
 
     private fun eventValues(d: EventDraft) = ContentValues().apply {
@@ -198,6 +241,8 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
         // У событий на весь день Android требует пояс UTC и полночь UTC.
         put(Events.EVENT_TIMEZONE, if (d.allDay) "UTC" else d.timeZone)
         put(Events.HAS_ALARM, if (d.reminderMinutes.isEmpty()) 0 else 1)
+        // Цвет — ключом из палитры календаря: Google понимает только свои 11 цветов.
+        if (d.colorKey != null) put(Events.EVENT_COLOR_KEY, d.colorKey) else { putNull(Events.EVENT_COLOR_KEY); putNull(Events.EVENT_COLOR) }
         if (d.rrule != null) {
             // Повторяющееся событие задаётся длительностью, а не концом — иначе Android его отвергнет.
             put(Events.RRULE, d.rrule)

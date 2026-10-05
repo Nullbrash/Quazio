@@ -15,6 +15,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +49,7 @@ import io.github.nullbrash.quazio.core.ui.res.cal_setup_title
 import io.github.nullbrash.quazio.core.ui.res.cal_shown_count
 import io.github.nullbrash.quazio.core.ui.res.cal_title
 import io.github.nullbrash.quazio.core.ui.res.cal_turn_off
+import io.github.nullbrash.quazio.core.ui.res.cal_week_sunday
 import io.github.nullbrash.quazio.core.ui.screens.finance.ColorDot
 import io.github.nullbrash.quazio.feature.calendar.CalendarInfo
 import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
@@ -66,7 +68,7 @@ private enum class CalendarDialog { NONE, SHOWN, DEFAULT }
  * списка — пожелание пользователя); потом каждое меняется своей кнопкой.
  */
 @Composable
-internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPrefs) {
+internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPrefs, onChanged: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val access = LocalCalendarAccess.current
     var enabled by remember { mutableStateOf(prefs.enabled) }
@@ -110,7 +112,12 @@ internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPref
                 )
                 OutlinedButton(onClick = { open(CalendarDialog.DEFAULT) }) { Text(stringResource(Res.string.cal_choose)) }
             }
-            TextButton(onClick = { prefs.enabled = false; enabled = false }) { Text(stringResource(Res.string.cal_turn_off)) }
+            var sunday by remember { mutableStateOf(prefs.weekStartsSunday) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(Res.string.cal_week_sunday), modifier = Modifier.weight(1f))
+                Switch(sunday, { sunday = it; prefs.weekStartsSunday = it })
+            }
+            TextButton(onClick = { prefs.enabled = false; enabled = false; onChanged() }) { Text(stringResource(Res.string.cal_turn_off)) }
         }
         if (denied) Text(stringResource(Res.string.cal_denied), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
@@ -152,6 +159,7 @@ internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPref
                     pendingChoices = null
                     dialog = CalendarDialog.NONE
                     reload++
+                    onChanged()
                 },
                 onCancel = { dialog = CalendarDialog.NONE; pendingChoices = null },
             )

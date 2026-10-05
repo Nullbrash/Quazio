@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,9 +38,13 @@ import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.accounts_default_name
 import io.github.nullbrash.quazio.core.ui.res.error_open_data
 import io.github.nullbrash.quazio.core.ui.res.loading
+import io.github.nullbrash.quazio.core.ui.res.nav_calendar
 import io.github.nullbrash.quazio.core.ui.res.nav_finance
 import io.github.nullbrash.quazio.core.ui.res.nav_settings
+import io.github.nullbrash.quazio.core.ui.screens.calendar.CalendarScreen
 import io.github.nullbrash.quazio.core.ui.screens.finance.FinanceScreen
+import kotlinx.datetime.LocalDate
+import androidx.compose.runtime.remember
 import io.github.nullbrash.quazio.core.ui.screens.LockGate
 import io.github.nullbrash.quazio.core.ui.screens.SettingsScreen
 import androidx.lifecycle.Lifecycle
@@ -107,6 +112,10 @@ private fun CenteredText(text: String) {
 @Composable
 private fun Shell(versionName: String, services: AppServices, deviceAuth: DeviceAuthenticator?) {
     var current by rememberSaveable { mutableStateOf(Destination.FINANCE) }
+    // Нажатие на месяц в финансах — этот месяц в календаре (пожелание пользователя).
+    var calendarJump by remember { mutableStateOf<LocalDate?>(null) }
+    val destinations = Destination.entries.filter { it != Destination.CALENDAR || services.calendar != null }
+    val openCalendar: (LocalDate) -> Unit = { calendarJump = it; current = Destination.CALENDAR }
     // Прислали текст «В учёт Quazio» — его разбирают финансы.
     val incomingText = LocalIncomingText.current?.text?.collectAsState()?.value
     LaunchedEffect(incomingText) { if (incomingText != null) current = Destination.FINANCE }
@@ -122,7 +131,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
             NavLayout.BOTTOM_BAR -> Scaffold(
                 bottomBar = {
                     NavigationBar {
-                        Destination.entries.forEach { d ->
+                        destinations.forEach { d ->
                             NavigationBarItem(
                                 selected = d == current,
                                 onClick = { current = d },
@@ -134,7 +143,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                 },
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
-                    DestinationContent(current, versionName, services, deviceAuth)
+                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar)
                 }
             }
 
@@ -142,7 +151,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                 Row(Modifier.fillMaxSize().padding(padding)) {
                     // Отступы от краёв экрана уже даёт Scaffold — у панели свои отключены.
                     NavigationRail(windowInsets = WindowInsets(0)) {
-                        Destination.entries.forEach { d ->
+                        destinations.forEach { d ->
                             NavigationRailItem(
                                 selected = d == current,
                                 onClick = { current = d },
@@ -151,7 +160,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                             )
                         }
                     }
-                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth) }
+                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar) }
                 }
             }
         }
@@ -159,10 +168,23 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
 }
 
 @Composable
-private fun DestinationContent(destination: Destination, versionName: String, services: AppServices, deviceAuth: DeviceAuthenticator?) {
+private fun DestinationContent(
+    destination: Destination,
+    versionName: String,
+    services: AppServices,
+    deviceAuth: DeviceAuthenticator?,
+    calendarJump: LocalDate?,
+    onJumpHandled: () -> Unit,
+    openCalendar: (LocalDate) -> Unit,
+) {
     val screen: @Composable () -> Unit = {
         when (destination) {
-            Destination.FINANCE -> FinanceScreen(services)
+            Destination.FINANCE -> FinanceScreen(services, onOpenCalendar = if (services.calendar != null) openCalendar else null)
+            Destination.CALENDAR -> {
+                val source = services.calendar
+                val prefs = services.calendarPrefs
+                if (source != null && prefs != null) CalendarScreen(source, prefs, calendarJump, onJumpHandled)
+            }
             Destination.SETTINGS -> SettingsScreen(versionName, services, deviceAuth)
         }
     }
@@ -172,11 +194,13 @@ private fun DestinationContent(destination: Destination, versionName: String, se
 private val Destination.label: StringResource
     get() = when (this) {
         Destination.FINANCE -> Res.string.nav_finance
+        Destination.CALENDAR -> Res.string.nav_calendar
         Destination.SETTINGS -> Res.string.nav_settings
     }
 
 private val Destination.icon: ImageVector
     get() = when (this) {
         Destination.FINANCE -> QuazioIcons.Wallet
+        Destination.CALENDAR -> Icons.Filled.DateRange
         Destination.SETTINGS -> Icons.Filled.Settings
     }

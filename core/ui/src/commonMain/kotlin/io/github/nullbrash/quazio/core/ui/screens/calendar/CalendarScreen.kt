@@ -1,0 +1,352 @@
+package io.github.nullbrash.quazio.core.ui.screens.calendar
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import io.github.nullbrash.quazio.core.ui.LocalCalendarAccess
+import io.github.nullbrash.quazio.core.ui.res.Res
+import io.github.nullbrash.quazio.core.ui.res.cal_add_event
+import io.github.nullbrash.quazio.core.ui.res.cal_all_day
+import io.github.nullbrash.quazio.core.ui.res.cal_dial
+import io.github.nullbrash.quazio.core.ui.res.cal_dial_12
+import io.github.nullbrash.quazio.core.ui.res.cal_dial_24
+import io.github.nullbrash.quazio.core.ui.res.cal_no_events
+import io.github.nullbrash.quazio.core.ui.res.cal_today
+import io.github.nullbrash.quazio.core.ui.res.cal_tomorrow
+import io.github.nullbrash.quazio.core.ui.res.cal_view_day
+import io.github.nullbrash.quazio.core.ui.res.cal_view_month
+import io.github.nullbrash.quazio.core.ui.res.cal_view_week
+import io.github.nullbrash.quazio.core.ui.screens.CalendarSettingsSection
+import io.github.nullbrash.quazio.core.ui.screens.finance.ColorDot
+import io.github.nullbrash.quazio.core.ui.screens.finance.colorOf
+import io.github.nullbrash.quazio.feature.calendar.CalendarEvent
+import io.github.nullbrash.quazio.feature.calendar.CalendarInfo
+import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
+import io.github.nullbrash.quazio.feature.calendar.CalendarSource
+import io.github.nullbrash.quazio.feature.calendar.DialLayouts
+import io.github.nullbrash.quazio.feature.calendar.DialMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
+
+internal enum class CalendarView { DAY, WEEK, MONTH }
+
+/** Что открыть в окне события: новое (с началом [newStart]) или повторение существующего. */
+internal data class EventTarget(val eventId: String?, val instanceStart: Long?, val recurring: Boolean, val newStart: Long?)
+
+/**
+ * Календарь: день на циферблате + список, неделя, месяц. События — из календарей устройства
+ * (своих Quazio не хранит); [jumpTo] — открыть месяц с этой датой (из финансов).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CalendarScreen(source: CalendarSource, prefs: CalendarPrefs, jumpTo: LocalDate? = null, onJumpHandled: () -> Unit = {}) {
+    val zone = remember { TimeZone.currentSystemDefault() }
+    val access = LocalCalendarAccess.current
+    var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
+    val today = millisToLocal(now, zone).date
+    var view by remember { mutableStateOf(CalendarView.DAY) }
+    var date by remember { mutableStateOf(today) }
+    var enabled by remember { mutableStateOf(prefs.enabled && access?.granted() != false) }
+    var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
+    var events by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
+    var dial24 by remember { mutableStateOf(prefs.dial24) }
+    var target by remember { mutableStateOf<EventTarget?>(null) }
+    var reload by remember { mutableStateOf(0) }
+
+    LaunchedEffect(jumpTo) {
+        if (jumpTo != null) {
+            date = jumpTo
+            view = CalendarView.MONTH
+            onJumpHandled()
+        }
+    }
+    // Стрелка и «осталось» — раз в минуту; изменения из Google — при возвращении в приложение.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000 - Clock.System.now().toEpochMilliseconds() % 60_000)
+            now = Clock.System.now().toEpochMilliseconds()
+        }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { reload++ }
+
+    val sunday = prefs.weekStartsSunday
+    val (from, to) = when (view) {
+        CalendarView.DAY -> date.startMillis(zone) to maxOf(date.nextDay().startMillis(zone), if (date == today) now + 12 * 3_600_000L else 0L)
+        CalendarView.WEEK -> weekStart(date, sunday).let { it.startMillis(zone) to it.plus(DatePeriod(days = 7)).startMillis(zone) }
+        CalendarView.MONTH -> monthGridStart(date, sunday).let { it.startMillis(zone) to it.plus(DatePeriod(days = 42)).startMillis(zone) }
+    }
+    LaunchedEffect(enabled, from, to, reload) {
+        if (!enabled) return@LaunchedEffect
+        val (cals, evs) = withContext(Dispatchers.IO) {
+            val cals = source.calendars()
+            cals to source.events(from, to, prefs.shown(cals).mapTo(HashSet()) { it.id })
+        }
+        calendars = cals
+        events = evs
+    }
+
+    if (!enabled) {
+        Box(Modifier.fillMaxSize().padding(24.dp)) {
+            CalendarSettingsSection(source, prefs, onChanged = { enabled = prefs.enabled && access?.granted() != false })
+        }
+        return
+    }
+
+    target?.let { t ->
+        EventEditor(source, prefs, calendars, t, onClose = { changed -> target = null; if (changed) reload++ })
+        return
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { date = shift(date, view, -1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
+                Text(title(date, view, sunday), style = MaterialTheme.typography.titleLarge, maxLines = 1)
+                IconButton(onClick = { date = shift(date, view, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { date = today }) { Text(stringResource(Res.string.cal_today)) }
+            }
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(CalendarView.DAY to Res.string.cal_view_day, CalendarView.WEEK to Res.string.cal_view_week, CalendarView.MONTH to Res.string.cal_view_month)
+                    .forEach { (v, label) -> FilterChip(selected = view == v, onClick = { view = v }, label = { Text(stringResource(label)) }) }
+            }
+            val calendarName = calendars.associate { it.id to it.name }
+            val open: (CalendarEvent) -> Unit = { e -> target = EventTarget(e.eventId, e.instanceStart, e.recurring, null) }
+            when (view) {
+                CalendarView.DAY -> DayView(
+                    date, today, now, zone, events, calendarName, dial24 && date == today || date != today,
+                    showToggle = date == today,
+                    onToggle = { dial24 = it; prefs.dial24 = it },
+                    onOpen = open,
+                )
+                CalendarView.WEEK -> WeekView(weekStart(date, sunday), today, zone, events, onDay = { date = it; view = CalendarView.DAY }, onOpen = open)
+                CalendarView.MONTH -> MonthView(date, today, zone, events, sunday, onDay = { date = it; view = CalendarView.DAY })
+            }
+        }
+        FloatingActionButton(
+            onClick = {
+                // Новое событие — ближайший полный час (сегодня) или 9:00 выбранного дня.
+                val start = if (date == today) (now / 3_600_000L + 1) * 3_600_000L else date.startMillis(zone) + 9 * 3_600_000L
+                target = EventTarget(null, null, false, start)
+            },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        ) { Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.cal_add_event)) }
+    }
+}
+
+private fun shift(d: LocalDate, view: CalendarView, n: Int): LocalDate = when (view) {
+    CalendarView.DAY -> d.plus(DatePeriod(days = n))
+    CalendarView.WEEK -> d.plus(DatePeriod(days = 7 * n))
+    CalendarView.MONTH -> d.plus(DatePeriod(months = n))
+}
+
+private fun title(d: LocalDate, view: CalendarView, sunday: Boolean): String = when (view) {
+    CalendarView.DAY -> shortDate(d)
+    CalendarView.WEEK -> {
+        val a = weekStart(d, sunday)
+        val b = a.plus(DatePeriod(days = 6))
+        if (a.month == b.month) "${a.day}–${b.day} ${MONTHS_GEN[b.month.ordinal]}"
+        else "${a.day} ${MONTHS_GEN[a.month.ordinal].take(3)}. – ${b.day} ${MONTHS_GEN[b.month.ordinal].take(3)}."
+    }
+    CalendarView.MONTH -> "${MONTHS_NOM[d.month.ordinal]} ${d.year}"
+}
+
+private fun monthGridStart(d: LocalDate, sunday: Boolean): LocalDate = weekStart(LocalDate(d.year, d.month, 1), sunday)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DayView(
+    date: LocalDate,
+    today: LocalDate,
+    now: Long,
+    zone: TimeZone,
+    events: List<CalendarEvent>,
+    calendarName: Map<String, String>,
+    full24: Boolean,
+    showToggle: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onOpen: (CalendarEvent) -> Unit,
+) {
+    val dayEvents = events.filter { it.occursOn(date, zone) }.sortedWith(compareBy({ !it.allDay }, { it.start }))
+    val layout = DialLayouts.layout(
+        if (full24) DialMode.DAY_24 else DialMode.SLIDING_12,
+        events, now, date.startMillis(zone), date.nextDay().startMillis(zone),
+        minuteOfDay = { t -> millisToLocal(t, zone).let { it.hour * 60 + it.minute } },
+    )
+    val nowDt = millisToLocal(now, zone)
+    val allDayText = stringResource(Res.string.cal_all_day)
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        item {
+            val allDay = dayEvents.filter { it.allDay }
+            if (allDay.isNotEmpty()) {
+                FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    allDay.forEach { e -> AssistChip(onClick = { onOpen(e) }, label = { Text(e.title) }, leadingIcon = { ColorDot(e.color) }) }
+                }
+            }
+        }
+        item {
+            Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                DayDial(
+                    layout = layout,
+                    centerTop = if (date == today) hm(nowDt) else "${date.day}.${(date.month.ordinal + 1).toString().padStart(2, '0')}",
+                    centerBottom = if (date == today) "${date.day}.${date.month.ordinal + 1}" else WEEKDAYS_SHORT[date.dayOfWeek.ordinal],
+                    untilNextText = layout.untilNext?.let { hoursMinutes(it.minutes) },
+                    tomorrowText = stringResource(Res.string.cal_tomorrow),
+                    description = stringResource(Res.string.cal_dial),
+                    modifier = Modifier.widthIn(max = 380.dp).fillMaxWidth(),
+                )
+            }
+        }
+        if (showToggle) item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                FilterChip(selected = !full24, onClick = { onToggle(false) }, label = { Text(stringResource(Res.string.cal_dial_12)) })
+                Spacer(Modifier.size(8.dp))
+                FilterChip(selected = full24, onClick = { onToggle(true) }, label = { Text(stringResource(Res.string.cal_dial_24)) })
+            }
+        }
+        item { HorizontalDivider(Modifier.padding(top = 8.dp)) }
+        if (dayEvents.isEmpty()) item {
+            Text(stringResource(Res.string.cal_no_events), modifier = Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
+        }
+        // События на весь день — чипами над циферблатом; в списке — только со временем.
+        dayEvents.filter { !it.allDay }.forEach { e ->
+            item {
+                EventRow(e, e.timeText(date, zone, allDayText), calendarName[e.calendarId], onClick = { onOpen(e) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun EventRow(e: CalendarEvent, time: String, calendar: String?, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        ColorDot(e.color)
+        Text(time, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 12.dp).widthIn(min = 92.dp))
+        Column(Modifier.weight(1f)) {
+            Text(e.title.ifBlank { "—" }, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val extra = listOfNotNull(e.location, calendar).joinToString(" · ")
+            if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun WeekView(start: LocalDate, today: LocalDate, zone: TimeZone, events: List<CalendarEvent>, onDay: (LocalDate) -> Unit, onOpen: (CalendarEvent) -> Unit) {
+    val allDayText = stringResource(Res.string.cal_all_day)
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        (0 until 7).forEach { i ->
+            val d = start.plus(DatePeriod(days = i))
+            item {
+                Text(
+                    longDate(d),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = if (d == today) FontWeight.Bold else null,
+                    color = if (d == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth().clickable { onDay(d) }.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                )
+            }
+            val dayEvents = events.filter { it.occursOn(d, zone) }.sortedWith(compareBy({ !it.allDay }, { it.start }))
+            if (dayEvents.isEmpty()) item {
+                Text("—", modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            dayEvents.forEach { e -> item { EventRow(e, e.timeText(d, zone, allDayText), null, onClick = { onOpen(e) }) } }
+            item { HorizontalDivider(Modifier.padding(top = 4.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun MonthView(date: LocalDate, today: LocalDate, zone: TimeZone, events: List<CalendarEvent>, sunday: Boolean, onDay: (LocalDate) -> Unit) {
+    val start = monthGridStart(date, sunday)
+    val names = if (sunday) listOf(WEEKDAYS_SHORT.last()) + WEEKDAYS_SHORT.dropLast(1) else WEEKDAYS_SHORT
+    Column(Modifier.fillMaxWidth().padding(8.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            names.forEach { n -> Text(n, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        (0 until 6).forEach { w ->
+            Row(Modifier.fillMaxWidth()) {
+                (0 until 7).forEach { i ->
+                    val d = start.plus(DatePeriod(days = w * 7 + i))
+                    val dayEvents = events.filter { it.occursOn(d, zone) }
+                    Column(
+                        Modifier.weight(1f).aspectRatio(0.8f).clickable { onDay(d) }.padding(2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        val isToday = d == today
+                        Box(
+                            Modifier.size(28.dp).clip(CircleShape).background(if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                d.day.toString(),
+                                color = when {
+                                    isToday -> MaterialTheme.colorScheme.onPrimary
+                                    d.month != date.month -> MaterialTheme.colorScheme.outline
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            dayEvents.take(4).forEach { e -> Box(Modifier.size(6.dp).clip(CircleShape).background(colorOf(e.color))) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -56,6 +56,8 @@ data class EventDraft(
     val rrule: String? = null,
     /** За сколько минут напоминать (у Google — уведомлением). */
     val reminderMinutes: List<Int> = emptyList(),
+    /** Цвет из палитры календаря ([CalendarSource.eventColors]); null — цвет календаря. */
+    val colorKey: String? = null,
 ) {
     init {
         require(end >= start) { "Конец события раньше начала" }
@@ -87,4 +89,12 @@ interface CalendarSource {
     fun deleteInstance(eventId: String, instanceStart: Long)
 
     fun reminders(eventId: String): List<Int>
+
+    /** Событие целиком для окна правки: у повторяющегося — начало и длительность всей серии. */
+    fun event(eventId: String): EventDraft?
+
+    /** Цвета событий, которые понимает календарь (у Google — 11); пусто — только цвет календаря. */
+    fun eventColors(calendarId: String): List<EventColor>
 }
+
+data class EventColor(val key: String, val color: Long)

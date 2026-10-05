@@ -4,7 +4,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** Разделы приложения в навигации. Новые модули добавляются сюда. */
-enum class Destination { FINANCE, SETTINGS }
+enum class Destination { FINANCE, CALENDAR, SETTINGS }
 
 enum class NavLayout { BOTTOM_BAR, SIDE_RAIL }
 
