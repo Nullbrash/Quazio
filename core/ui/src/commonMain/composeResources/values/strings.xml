@@ -21,4 +21,38 @@
     <string name="accounts_create">Создать</string>
     <string name="accounts_default_name">Я</string>
     <string name="action_cancel">Отмена</string>
+
+    <string name="lock_title">Раздел защищён</string>
+    <string name="lock_enter">Войти</string>
+    <string name="lock_password">Пароль Quazio</string>
+    <string name="lock_wrong_password">Неверный пароль</string>
+    <string name="lock_wrong_code">Неверный код</string>
+    <string name="lock_blocked">Слишком много попыток. Повторите через %1$s с</string>
+    <string name="lock_forgot">Забыли пароль?</string>
+    <string name="lock_recovery_code">Код восстановления</string>
+    <string name="lock_new_password">Новый пароль</string>
+    <string name="lock_repeat_password">Повторите пароль</string>
+    <string name="lock_current_password">Текущий пароль</string>
+    <string name="lock_mismatch">Пароли не совпадают</string>
+    <string name="lock_too_short">Не короче 4 символов</string>
+    <string name="lock_setup_required">На телефоне нет блокировки экрана. Задайте пароль Quazio, чтобы открыть этот раздел.</string>
+    <string name="lock_code_text">Запишите этот код и храните отдельно от устройства. Он понадобится, если вы забудете пароль. Больше он показан не будет.</string>
+    <string name="lock_code_saved">Я записал код</string>
+    <string name="lock_done">Готово</string>
+    <string name="lock_back">Назад</string>
+
+    <string name="security_title">Защита</string>
+    <string name="security_mode_device">Вход — через блокировку экрана устройства</string>
+    <string name="security_mode_password">Вход — по паролю Quazio</string>
+    <string name="security_mode_setup">Пароль не задан — финансы закрыты</string>
+    <string name="security_mode_open">Пароль не задан — разделы открыты</string>
+    <string name="security_set_password">Задать пароль</string>
+    <string name="security_change_password">Сменить пароль</string>
+    <string name="security_remove_password">Убрать пароль</string>
+    <string name="security_lock_now">Заблокировать сейчас</string>
+    <string name="security_timeout">Снова спрашивать вход</string>
+    <string name="timeout_immediate">Сразу</string>
+    <string name="timeout_1">Через 1 минуту</string>
+    <string name="timeout_5">Через 5 минут</string>
+    <string name="timeout_15">Через 15 минут</string>
 </resources>

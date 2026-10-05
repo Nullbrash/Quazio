@@ -3,3 +3,6 @@ SELECT value FROM app_state WHERE key = ?;
 
 put:
 INSERT OR REPLACE INTO app_state(key, value) VALUES (?, ?);
+
+delete:
+DELETE FROM app_state WHERE key = ?;

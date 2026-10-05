@@ -37,7 +37,10 @@ import io.github.nullbrash.quazio.core.ui.res.loading
 import io.github.nullbrash.quazio.core.ui.res.nav_finance
 import io.github.nullbrash.quazio.core.ui.res.nav_settings
 import io.github.nullbrash.quazio.core.ui.screens.FinanceScreen
+import io.github.nullbrash.quazio.core.ui.screens.LockGate
 import io.github.nullbrash.quazio.core.ui.screens.SettingsScreen
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -56,13 +59,16 @@ private sealed interface Startup {
  * [openServices] открывает базу — вызывается в фоне, интерфейс тем временем уже рисуется.
  */
 @Composable
-fun QuazioApp(versionName: String, openServices: () -> AppServices) {
+fun QuazioApp(versionName: String, openServices: () -> AppServices, deviceAuth: DeviceAuthenticator? = null) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
         val startup by produceState<Startup>(Startup.Loading) {
             value = try {
                 val defaultName = getString(Res.string.accounts_default_name)
                 val services = withContext(Dispatchers.IO) {
-                    openServices().also { it.accounts.initialize(it.deviceName, it.platform, defaultName) }
+                    openServices().also {
+                        it.accounts.initialize(it.deviceName, it.platform, defaultName)
+                        it.lock.setTimeout(it.vault.timeout)
+                    }
                 }
                 Startup.Ready(services)
             } catch (e: Exception) {
@@ -72,7 +78,7 @@ fun QuazioApp(versionName: String, openServices: () -> AppServices) {
         when (val s = startup) {
             Startup.Loading -> CenteredText(stringResource(Res.string.loading))
             is Startup.Failed -> CenteredText(stringResource(Res.string.error_open_data, s.message))
-            is Startup.Ready -> Shell(versionName, s.services)
+            is Startup.Ready -> Shell(versionName, s.services, deviceAuth)
         }
     }
 }
@@ -85,8 +91,12 @@ private fun CenteredText(text: String) {
 }
 
 @Composable
-private fun Shell(versionName: String, services: AppServices) {
+private fun Shell(versionName: String, services: AppServices, deviceAuth: DeviceAuthenticator?) {
     var current by rememberSaveable { mutableStateOf(Destination.FINANCE) }
+
+    // Уход в фон и возвращение — для повторного входа (одинаково на телефоне и ПК).
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { services.lock.onBackground() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { services.lock.onForeground() }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         when (navLayoutFor(maxWidth)) {
@@ -105,7 +115,7 @@ private fun Shell(versionName: String, services: AppServices) {
                 },
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
-                    DestinationContent(current, versionName, services)
+                    DestinationContent(current, versionName, services, deviceAuth)
                 }
             }
 
@@ -122,7 +132,7 @@ private fun Shell(versionName: String, services: AppServices) {
                             )
                         }
                     }
-                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services) }
+                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth) }
                 }
             }
         }
@@ -130,11 +140,14 @@ private fun Shell(versionName: String, services: AppServices) {
 }
 
 @Composable
-private fun DestinationContent(destination: Destination, versionName: String, services: AppServices) {
-    when (destination) {
-        Destination.FINANCE -> FinanceScreen(services.accounts)
-        Destination.SETTINGS -> SettingsScreen(versionName, services.accounts)
+private fun DestinationContent(destination: Destination, versionName: String, services: AppServices, deviceAuth: DeviceAuthenticator?) {
+    val screen: @Composable () -> Unit = {
+        when (destination) {
+            Destination.FINANCE -> FinanceScreen(services.accounts)
+            Destination.SETTINGS -> SettingsScreen(versionName, services, deviceAuth)
+        }
     }
+    if (destination.isSensitive) LockGate(services, deviceAuth, screen) else screen()
 }
 
 private val Destination.label: StringResource

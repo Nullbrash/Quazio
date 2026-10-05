@@ -27,6 +27,8 @@ kotlin {
             api(libs.compose.foundation)
             api(libs.compose.material3)
             api(projects.core.accounts)
+            api(projects.core.lock)
+            implementation(libs.jb.lifecycle.runtime.compose)
             implementation(libs.compose.material.icons.core)
             implementation(libs.compose.components.resources)
         }

@@ -12,7 +12,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.nullbrash.quazio.core.accounts.AccountService
+import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.DeviceAuthenticator
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.app_name
 import io.github.nullbrash.quazio.core.ui.res.settings_about
@@ -21,12 +22,14 @@ import io.github.nullbrash.quazio.core.ui.res.settings_version
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun SettingsScreen(versionName: String, accounts: AccountService) {
+fun SettingsScreen(versionName: String, services: AppServices, deviceAuth: DeviceAuthenticator?) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        AccountsSection(accounts)
+        AccountsSection(services.accounts)
+        HorizontalDivider()
+        SecuritySection(services, deviceAuth)
         HorizontalDivider()
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.settings_about), style = MaterialTheme.typography.titleMedium)

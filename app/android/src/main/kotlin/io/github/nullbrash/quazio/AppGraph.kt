@@ -5,6 +5,8 @@ import android.os.Build
 import io.github.nullbrash.quazio.core.accounts.AccountService
 import io.github.nullbrash.quazio.core.db.AndroidDatabase
 import io.github.nullbrash.quazio.core.db.AndroidKeystoreKeyStore
+import io.github.nullbrash.quazio.core.lock.AppLock
+import io.github.nullbrash.quazio.core.lock.PasswordVault
 import io.github.nullbrash.quazio.core.ui.AppServices
 
 /**
@@ -19,9 +21,16 @@ object AppGraph {
     fun services(context: Context): AppServices =
         services ?: synchronized(this) { services ?: create(context.applicationContext).also { services = it } }
 
-    private fun create(context: Context): AppServices = AppServices(
-        accounts = AccountService(AndroidDatabase.open(context, AndroidKeystoreKeyStore(context)), System::currentTimeMillis),
-        deviceName = Build.MODEL,
-        platform = "android",
-    )
+    private fun create(context: Context): AppServices {
+        val db = AndroidDatabase.open(context, AndroidKeystoreKeyStore(context))
+        return AppServices(
+            accounts = AccountService(db, System::currentTimeMillis),
+            vault = PasswordVault(db, System::currentTimeMillis),
+            lock = AppLock(System::currentTimeMillis),
+            deviceName = Build.MODEL,
+            platform = "android",
+            // Телефон без блокировки экрана: финансы закрыты, пока не задан пароль Quazio.
+            passwordRequired = true,
+        )
+    }
 }

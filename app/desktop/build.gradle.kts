@@ -23,6 +23,7 @@ kotlin {
 dependencies {
     implementation(projects.core.ui)
     implementation(projects.core.accounts)
+    implementation(libs.jna.platform)
     implementation(compose.desktop.currentOs)
 }
 
