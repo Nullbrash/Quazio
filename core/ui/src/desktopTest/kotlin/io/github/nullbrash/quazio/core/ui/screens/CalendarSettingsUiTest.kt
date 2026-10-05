@@ -65,7 +65,13 @@ class CalendarSettingsUiTest {
         // Праздники — только просмотр: в выборе «куда записывать» их нет.
         onNodeWithText("только просмотр").assertExists()
         onNodeWithText("Праздники России").performClick() // снять галочку
-        onAllNodes(hasText("Мой календарь"))[1].performClick() // второй — в списке «куда записывать»
+        // Два отдельных окна (пожелание пользователя): сначала «что показывать» → «Далее».
+        onNodeWithText("Далее").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Куда записывать новые события")).fetchSemanticsNodes().isNotEmpty() }
+        assertFalse(prefs.enabled) // до «Готово» ничего не сохранено
+        // Во втором окне только показываемые и доступные для записи: праздников нет.
+        assertTrue(onAllNodes(hasText("Праздники России")).fetchSemanticsNodes().isEmpty())
+        onNodeWithText("Мой календарь").performClick()
         onNodeWithText("Готово").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Показываю календарей", substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
@@ -74,6 +80,15 @@ class CalendarSettingsUiTest {
         assertEquals("3", prefs.defaultCalendarId)
         onNodeWithText("Показываю календарей: 2 из 3").assertExists()
         onNodeWithText("Новые события — в: Мой календарь").assertExists()
+
+        // Потом каждое меняется своей кнопкой: «Выбрать» — только второе окно.
+        onNodeWithText("Выбрать").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Куда записывать новые события")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(onAllNodes(hasText("Какие календари показывать")).fetchSemanticsNodes().isEmpty())
+        onNodeWithText("Личный").performClick()
+        onNodeWithText("Готово").performClick()
+        waitUntil(timeoutMillis = 10_000) { prefs.defaultCalendarId == "1" }
+        assertEquals(mapOf("1" to true, "2" to false, "3" to true), prefs.choices) // список показа не тронут
     }
 
     @Test

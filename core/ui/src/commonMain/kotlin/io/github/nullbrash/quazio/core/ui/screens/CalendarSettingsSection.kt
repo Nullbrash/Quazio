@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -33,6 +32,9 @@ import io.github.nullbrash.quazio.core.ui.LocalCalendarAccess
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.cal_change
+import io.github.nullbrash.quazio.core.ui.res.cal_choose
+import io.github.nullbrash.quazio.core.ui.res.cal_default_hint
+import io.github.nullbrash.quazio.core.ui.res.cal_next
 import io.github.nullbrash.quazio.core.ui.res.cal_default_for_new
 import io.github.nullbrash.quazio.core.ui.res.cal_denied
 import io.github.nullbrash.quazio.core.ui.res.cal_done
@@ -56,9 +58,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 
+private enum class CalendarDialog { NONE, SHOWN, DEFAULT }
+
 /**
- * Календари телефона: включение (разрешение — только здесь), обязательный список «что
- * показывать» при первом включении и выбор одного календаря для новых событий.
+ * Календари телефона: включение (разрешение — только здесь), при первом включении — обязательно
+ * два окна по очереди: «что показывать», затем «куда записывать новые события» (два отдельных
+ * списка — пожелание пользователя); потом каждое меняется своей кнопкой.
  */
 @Composable
 internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPrefs) {
@@ -67,20 +72,22 @@ internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPref
     var enabled by remember { mutableStateOf(prefs.enabled) }
     var calendars by remember { mutableStateOf<List<CalendarInfo>?>(null) }
     var denied by remember { mutableStateOf(false) }
-    var setup by remember { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf(CalendarDialog.NONE) }
+    // Первое включение: выбор «что показывать» держим до второго окна — до «Готово» ничего не сохраняется.
+    var pendingChoices by remember { mutableStateOf<Map<String, Boolean>?>(null) }
     var reload by remember { mutableStateOf(0) }
 
     LaunchedEffect(enabled, reload) {
         calendars = if (enabled && access?.granted() != false) withContext(Dispatchers.IO) { source.calendars() } else null
     }
 
-    fun openSetup() {
+    fun open(which: CalendarDialog) {
         scope.launch {
             val ok = access?.request() ?: true
             denied = !ok
             if (!ok) return@launch
             calendars = withContext(Dispatchers.IO) { source.calendars() }
-            setup = true
+            dialog = which
         }
     }
 
@@ -88,54 +95,80 @@ internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPref
         Text(stringResource(Res.string.cal_title), style = MaterialTheme.typography.titleMedium)
         if (!enabled) {
             Text(stringResource(Res.string.cal_intro), style = MaterialTheme.typography.bodyMedium)
-            Button(onClick = ::openSetup) { Text(stringResource(Res.string.cal_enable)) }
+            Button(onClick = { open(CalendarDialog.SHOWN) }) { Text(stringResource(Res.string.cal_enable)) }
         } else {
             val list = calendars.orEmpty()
             val shown = prefs.shown(list)
-            Text(stringResource(Res.string.cal_shown_count, shown.size, list.size))
-            Text(stringResource(Res.string.cal_new_events_in, prefs.defaultFor(shown)?.name ?: stringResource(Res.string.cal_no_writable)))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = ::openSetup) { Text(stringResource(Res.string.cal_change)) }
-                TextButton(onClick = { prefs.enabled = false; enabled = false }) { Text(stringResource(Res.string.cal_turn_off)) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(Res.string.cal_shown_count, shown.size, list.size), modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { open(CalendarDialog.SHOWN) }) { Text(stringResource(Res.string.cal_change)) }
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(Res.string.cal_new_events_in, prefs.defaultFor(shown)?.name ?: stringResource(Res.string.cal_no_writable)),
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedButton(onClick = { open(CalendarDialog.DEFAULT) }) { Text(stringResource(Res.string.cal_choose)) }
+            }
+            TextButton(onClick = { prefs.enabled = false; enabled = false }) { Text(stringResource(Res.string.cal_turn_off)) }
         }
         if (denied) Text(stringResource(Res.string.cal_denied), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
 
-    val list = calendars
-    if (setup && list != null) {
-        CalendarSetupDialog(
+    val list = calendars ?: return
+    val firstRun = !enabled
+    when (dialog) {
+        CalendarDialog.NONE -> Unit
+        CalendarDialog.SHOWN -> ShownCalendarsDialog(
             calendars = list,
-            prefs = prefs,
-            onDone = { choices, defaultId ->
-                prefs.choices = choices
-                prefs.defaultCalendarId = defaultId
-                prefs.enabled = true
-                setup = false
-                enabled = true
-                reload++
+            initial = list.associate { it.id to prefs.isShown(it) },
+            confirm = stringResource(if (firstRun) Res.string.cal_next else Res.string.cal_done),
+            onDone = { choices ->
+                if (firstRun) {
+                    pendingChoices = choices
+                    dialog = CalendarDialog.DEFAULT
+                } else {
+                    prefs.choices = choices
+                    dialog = CalendarDialog.NONE
+                    reload++
+                }
             },
-            onCancel = { setup = false },
+            onCancel = { dialog = CalendarDialog.NONE; pendingChoices = null },
         )
+        CalendarDialog.DEFAULT -> {
+            val choices = pendingChoices ?: list.associate { it.id to prefs.isShown(it) }
+            val candidates = list.filter { it.writable && choices[it.id] == true }
+            val current = prefs.defaultFor(candidates)?.id
+            DefaultCalendarDialog(
+                candidates = candidates,
+                initial = current,
+                onDone = { defaultId ->
+                    if (firstRun) {
+                        prefs.choices = choices
+                        prefs.enabled = true
+                        enabled = true
+                    }
+                    prefs.defaultCalendarId = defaultId
+                    pendingChoices = null
+                    dialog = CalendarDialog.NONE
+                    reload++
+                },
+                onCancel = { dialog = CalendarDialog.NONE; pendingChoices = null },
+            )
+        }
     }
 }
 
-/**
- * Обязательный при первом включении список (решение пользователя): галочки «показывать»
- * (по умолчанию — как видно в системе) и один календарь для новых событий.
- */
+/** Какие календари показывать (по умолчанию — как видно в системе). */
 @Composable
-internal fun CalendarSetupDialog(
+internal fun ShownCalendarsDialog(
     calendars: List<CalendarInfo>,
-    prefs: CalendarPrefs,
-    onDone: (choices: Map<String, Boolean>, defaultId: String?) -> Unit,
+    initial: Map<String, Boolean>,
+    confirm: String,
+    onDone: (Map<String, Boolean>) -> Unit,
     onCancel: () -> Unit,
 ) {
-    val shown = remember { mutableStateMapOf<String, Boolean>().apply { calendars.forEach { put(it.id, prefs.isShown(it)) } } }
-    var defaultId by remember { mutableStateOf(prefs.defaultFor(prefs.shown(calendars))?.id) }
-    val writableShown = calendars.filter { it.writable && shown[it.id] == true }
-    if (writableShown.none { it.id == defaultId }) defaultId = writableShown.firstOrNull()?.id
-
+    val shown = remember { mutableStateMapOf<String, Boolean>().apply { putAll(initial) } }
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text(stringResource(Res.string.cal_setup_title)) },
@@ -158,23 +191,45 @@ internal fun CalendarSetupDialog(
                         }
                     }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                Text(stringResource(Res.string.cal_default_for_new), style = MaterialTheme.typography.labelLarge)
-                if (writableShown.isEmpty()) Text(stringResource(Res.string.cal_no_writable), style = MaterialTheme.typography.bodySmall)
-                writableShown.forEach { cal ->
-                    Row(Modifier.fillMaxWidth().clickable { defaultId = cal.id }, verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = defaultId == cal.id, onClick = { defaultId = cal.id })
+            }
+        },
+        confirmButton = { TextButton(onClick = { onDone(calendars.associate { it.id to (shown[it.id] == true) }) }) { Text(confirm) } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(Res.string.action_cancel)) } },
+    )
+}
+
+/**
+ * Один календарь для новых событий — из показываемых и доступных для записи: событие в
+ * скрытом календаре «пропало» бы с циферблата.
+ */
+@Composable
+internal fun DefaultCalendarDialog(
+    candidates: List<CalendarInfo>,
+    initial: String?,
+    onDone: (String?) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var selected by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(stringResource(Res.string.cal_default_for_new)) },
+        text = {
+            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(Res.string.cal_default_hint), style = MaterialTheme.typography.bodySmall)
+                if (candidates.isEmpty()) Text(stringResource(Res.string.cal_no_writable), style = MaterialTheme.typography.bodySmall)
+                candidates.forEach { cal ->
+                    Row(Modifier.fillMaxWidth().clickable { selected = cal.id }, verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = selected == cal.id, onClick = { selected = cal.id })
                         ColorDot(cal.color)
-                        Text(cal.name, modifier = Modifier.padding(start = 8.dp))
+                        Column(Modifier.padding(start = 8.dp)) {
+                            Text(cal.name)
+                            Text(cal.accountName, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = { onDone(calendars.associate { it.id to (shown[it.id] == true) }, defaultId) }) {
-                Text(stringResource(Res.string.cal_done))
-            }
-        },
+        confirmButton = { TextButton(onClick = { onDone(selected) }) { Text(stringResource(Res.string.cal_done)) } },
         dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(Res.string.action_cancel)) } },
     )
 }
