@@ -49,10 +49,10 @@ class AccountsOrderUiTest {
         finance.createAccount(accountId, "Карта", FinAccountType.CARD)
         finance.createAccount(accountId, "Копилка", FinAccountType.SAVINGS)
         setContent { MaterialTheme { FinanceScreen(services) } }
-        // Счета — на своём экране: «Всего на счетах» → «Счета» (две карточки в ряд) → «Порядок счетов».
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Всего на счетах", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        // Счета — на своём экране: кнопка «Счета» → экран «Счета» (две карточки в ряд) → «Порядок счетов».
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Счета")).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(onAllNodes(hasText("Копилка")).fetchSemanticsNodes().isEmpty()) // на главном карточек нет
-        onNodeWithText("Всего на счетах", substring = true).performClick()
+        onNodeWithText("Счета").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Копилка")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText("Порядок счетов").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Архивные", substring = true)).fetchSemanticsNodes().isNotEmpty() }

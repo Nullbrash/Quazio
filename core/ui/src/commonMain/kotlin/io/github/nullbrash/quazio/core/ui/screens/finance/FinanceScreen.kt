@@ -1,6 +1,18 @@
 package io.github.nullbrash.quazio.core.ui.screens.finance
 
 import androidx.compose.foundation.clickable
+import io.github.nullbrash.quazio.core.ui.res.fin_accounts_title
+import io.github.nullbrash.quazio.core.ui.QuazioIcons
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,7 +78,6 @@ import io.github.nullbrash.quazio.core.ui.res.fin_export_csv
 import io.github.nullbrash.quazio.core.ui.res.fin_export_done
 import io.github.nullbrash.quazio.core.ui.res.fin_export_failed
 import io.github.nullbrash.quazio.core.ui.res.fin_more
-import io.github.nullbrash.quazio.core.ui.res.fin_all_accounts
 import io.github.nullbrash.quazio.core.ui.res.quick_none
 import io.github.nullbrash.quazio.engine.quickinput.QuickDraft
 import io.github.nullbrash.quazio.engine.quickinput.QuickLine
@@ -301,10 +312,12 @@ private fun FinanceMain(
         // Счета — на своём экране (решение пользователя): здесь только сколько всего и вход туда.
         item {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f).clickable(onClick = onAccounts).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(Res.string.fin_all_accounts, formatMoney(data.total)), style = MaterialTheme.typography.titleMedium)
-                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null)
+                // Плашка — чтобы было видно, что это кнопка (пожелание пользователя).
+                FilledTonalButton(onClick = onAccounts, modifier = Modifier.padding(vertical = 8.dp).height(48.dp)) {
+                    Icon(QuazioIcons.Wallet, contentDescription = null)
+                    Text(stringResource(Res.string.fin_accounts_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
                 }
+                Spacer(Modifier.weight(1f))
                 // Редкие действия — в меню.
                 Box {
                     var menu by remember { mutableStateOf(false) }
@@ -335,13 +348,12 @@ private fun FinanceMain(
             }
         }
         item {
-            // Итоги месяца — равномерно по ширине, под месяцем по центру.
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                TotalCell(stringResource(Res.string.fin_income), formatMoney(data.totals.income), INCOME_COLOR)
-                TotalCell(stringResource(Res.string.fin_expense), formatMoney(data.totals.expense), null)
-                TotalCell(stringResource(Res.string.fin_net), formatMoney(data.totals.net), null)
+            // Итоги месяца — три равные плитки во всю ширину, без промежутков (пожелание пользователя).
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp).height(IntrinsicSize.Min)) {
+                TotalTile(stringResource(Res.string.fin_income), formatMoney(data.totals.income), INCOME_COLOR, Modifier.weight(1f))
+                TotalTile(stringResource(Res.string.fin_expense), formatMoney(data.totals.expense), null, Modifier.weight(1f))
+                TotalTile(stringResource(Res.string.fin_net), formatMoney(data.totals.net), null, Modifier.weight(1f))
             }
-            HorizontalDivider(Modifier.padding(top = 8.dp))
         }
         if (data.transactions.isEmpty()) {
             item {
@@ -363,10 +375,16 @@ private fun FinanceMain(
 }
 
 @Composable
-private fun TotalCell(label: String, value: String, color: Color?) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelMedium)
-        Text(value, style = MaterialTheme.typography.titleMedium, color = color ?: MaterialTheme.colorScheme.onSurface)
+private fun TotalTile(label: String, value: String, color: Color?, modifier: Modifier) {
+    Column(
+        modifier.fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(0.5.dp, MaterialTheme.colorScheme.outline)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleMedium, color = color ?: MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -374,8 +392,10 @@ private fun TotalCell(label: String, value: String, color: Color?) {
 internal fun AccountCard(account: FinAccount, counterparty: Tag?, modifier: Modifier = Modifier, onClick: () -> Unit) {
     // Одинаковый размер у всех карточек (пожелание пользователя): длинное — с многоточием.
     OutlinedCard(onClick = onClick, modifier = modifier.height(ACCOUNT_CARD_HEIGHT)) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Иконка по типу счёта над названием; всё по центру (пожелание пользователя).
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(account.type.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
             if (account.type == FinAccountType.DEBT) {
                 // Долг: знак говорит, кто кому должен — «+» вам вернут, «−» вернёте вы.
                 val toMe = !account.balance.isNegative
@@ -408,7 +428,19 @@ internal fun AccountCard(account: FinAccount, counterparty: Tag?, modifier: Modi
     }
 }
 
-private val ACCOUNT_CARD_HEIGHT = 92.dp
+private val ACCOUNT_CARD_HEIGHT = 120.dp
+
+internal val FinAccountType.icon: ImageVector
+    get() = when (this) {
+        FinAccountType.CARD -> QuazioIcons.Card
+        FinAccountType.SAVINGS -> QuazioIcons.Savings
+        FinAccountType.CASH -> QuazioIcons.Cash
+        FinAccountType.EWALLET -> QuazioIcons.Wallet
+        FinAccountType.SITE_BALANCE -> QuazioIcons.Globe
+        FinAccountType.BONUS -> Icons.Filled.Star
+        FinAccountType.CREDIT_CARD -> QuazioIcons.Bank
+        FinAccountType.DEBT -> Icons.Filled.Person
+    }
 
 @Composable
 private fun TransactionRow(t: Transaction, categoryColor: Long?, debtIds: Set<String>, onClick: () -> Unit) {
