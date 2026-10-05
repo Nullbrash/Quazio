@@ -9,7 +9,8 @@
     Окно ищется по заголовку «Quazio» в любом процессе: лаунчер jpackage
     поднимает программу не в том процессе, который запустили.
     Время запуска — до появления окна. Через `SettleSec` — медиана замеров
-    рабочего набора (Working Set) и частной памяти (Private Bytes).
+    рабочего набора (Working Set) и частной памяти (Private Bytes); за то же
+    время — загрузка процессора (в процентах одного ядра и всех ядер).
 
     С -Exe/-ExeArgs запускается другой exe (например, сборка GraalVM).
 
@@ -59,11 +60,13 @@ try {
 
     Start-Sleep -Seconds $SettleSec
     $ws = @(); $pb = @()
+    $win.Refresh(); $cpu0 = $win.TotalProcessorTime; $cpuClock = [Diagnostics.Stopwatch]::StartNew()
     for ($i = 0; $i -lt $Samples; $i++) {
         if ($i -gt 0) { Start-Sleep -Seconds $IntervalSec }
         $win.Refresh()
         $ws += $win.WorkingSet64; $pb += $win.PrivateMemorySize64
     }
+    $win.Refresh(); $cpuSec = ($win.TotalProcessorTime - $cpu0).TotalSeconds / $cpuClock.Elapsed.TotalSeconds
     $win.CloseMainWindow() | Out-Null
     if (-not $win.WaitForExit(15000)) { $win.Kill() }
     Start-Sleep -Seconds 2
@@ -77,6 +80,8 @@ $result = [pscustomobject]@{
     StartMs   = $startMs
     WorkingMB = [math]::Round((Get-Median $ws) / 1MB, 1)
     PrivateMB = [math]::Round((Get-Median $pb) / 1MB, 1)
+    CpuCorePct = [math]::Round($cpuSec * 100, 1)
+    CpuAllPct  = [math]::Round($cpuSec * 100 / [Environment]::ProcessorCount, 1)
 }
 if ($CsvPath) { $result | Export-Csv -Path $CsvPath -Append -NoTypeInformation -Encoding UTF8 }
 $result

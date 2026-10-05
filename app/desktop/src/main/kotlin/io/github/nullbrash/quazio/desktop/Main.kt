@@ -1,5 +1,6 @@
 package io.github.nullbrash.quazio.desktop
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -29,7 +30,7 @@ private val services: AppServices by lazy {
     val lock = AppLock(System::currentTimeMillis)
     val clock = DeviceClock(db, System::currentTimeMillis)
     SessionLockWatcher.start(onLocked = lock::lockNow)
-    AppServices(
+    val services = AppServices(
         accounts = AccountService(db, clock),
         finance = FinanceService(db, clock),
         vault = PasswordVault(db, System::currentTimeMillis),
@@ -39,6 +40,8 @@ private val services: AppServices by lazy {
         // На ПК пароль Quazio необязателен (решение пользователя): база и так под ключом Windows.
         passwordRequired = false,
     )
+    DevStress.seedIfRequested(services)
+    services
 }
 
 fun main() = application {
@@ -48,6 +51,7 @@ fun main() = application {
         state = rememberWindowState(width = 1000.dp, height = 700.dp),
     ) {
         val fileSaver = remember(window) { DesktopFileSaver(window) }
+        LaunchedEffect(window) { DevStress.scrollIfRequested(window) }
         QuazioApp(
             // Версию передаёт сборка через -Dquazio.version; без неё — запуск мимо Gradle.
             versionName = System.getProperty("quazio.version") ?: "dev",

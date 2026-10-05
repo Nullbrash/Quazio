@@ -47,6 +47,9 @@ compose.desktop {
             targetFormats(TargetFormat.Msi)
             packageName = "Quazio"
             packageVersion = appVersion.numericName
+            // Урезанная Java установленной программы: без java.sql база не открывается
+            // (запуск из Gradle этого не ловит — там полный JDK). Список — suggestRuntimeModules.
+            modules("java.instrument", "java.sql", "jdk.unsupported")
         }
     }
 }
