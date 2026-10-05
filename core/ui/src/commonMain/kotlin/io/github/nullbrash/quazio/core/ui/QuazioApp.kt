@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -146,6 +145,6 @@ private val Destination.label: StringResource
 
 private val Destination.icon: ImageVector
     get() = when (this) {
-        Destination.FINANCE -> Icons.Filled.ShoppingCart
+        Destination.FINANCE -> QuazioIcons.Wallet
         Destination.SETTINGS -> Icons.Filled.Settings
     }
