@@ -116,6 +116,23 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         markDeleted(old.account_id, T_FIN_ACCOUNT, id) { q.setFinAccountDeleted(it, id) }
     }
 
+    /**
+     * Довести баланс счёта до [targetMinor]: если отличается — операция-корректировка на
+     * разницу (видна в истории, удаляется как обычная). Так пользователь вводит итоговую
+     * цифру, а не считает разницу сам. Возвращает id корректировки или null, если менять нечего.
+     */
+    fun adjustBalanceTo(accountId: String, finAccountId: String, targetMinor: Long, description: String, atMillis: Long, timeZone: String): String? =
+        db.transactionWithResult {
+            val current = accounts(accountId).firstOrNull { it.id == finAccountId }?.balance?.minor
+                ?: throw IllegalArgumentException("Нет счёта $finAccountId")
+            val delta = targetMinor - current
+            if (delta == 0L) return@transactionWithResult null
+            saveTransaction(accountId, TransactionDraft(
+                kind = TxnKind.ADJUSTMENT, amountMinor = delta, finAccountId = finAccountId,
+                occurredAt = atMillis, timeZone = timeZone, description = description,
+            ))
+        }
+
     fun openingBalance(finAccountId: String): Long =
         requireNotNull(q.finAccountById(finAccountId).executeAsOneOrNull()) { "Нет счёта $finAccountId" }.opening_balance_minor
 

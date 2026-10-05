@@ -47,6 +47,8 @@ import io.github.nullbrash.quazio.core.ui.res.fin_add_account
 import io.github.nullbrash.quazio.core.ui.res.fin_add_txn
 import io.github.nullbrash.quazio.core.ui.res.fin_archived
 import io.github.nullbrash.quazio.core.ui.res.fin_categories
+import io.github.nullbrash.quazio.core.ui.res.fin_debt_returns
+import io.github.nullbrash.quazio.core.ui.res.fin_debt_waits
 import io.github.nullbrash.quazio.core.ui.res.fin_empty_month
 import io.github.nullbrash.quazio.core.ui.res.fin_expense
 import io.github.nullbrash.quazio.core.ui.res.fin_in_total
@@ -195,7 +197,8 @@ private fun FinanceMain(
         }
         item {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(data.accounts, key = { it.id }) { account -> AccountCard(account) { onAccount(account) } }
+                val tagNames = data.tags.associate { it.id to it.name }
+                items(data.accounts, key = { it.id }) { account -> AccountCard(account, account.personTagId?.let(tagNames::get)) { onAccount(account) } }
                 item { AssistChip(onClick = onNewAccount, label = { Text(stringResource(Res.string.fin_add_account)) }, leadingIcon = { Icon(Icons.Filled.Add, null) }) }
             }
             Text(
@@ -233,13 +236,20 @@ private fun TotalCell(label: String, value: String, color: Color?) {
 }
 
 @Composable
-private fun AccountCard(account: FinAccount, onClick: () -> Unit) {
+private fun AccountCard(account: FinAccount, counterparty: String?, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (account.type == FinAccountType.DEBT) {
                 // Долг: знак говорит, кто кому должен — «+» вам вернут, «−» вернёте вы.
                 val toMe = !account.balance.isNegative
+                // «Катя вернёт» / «Катя ждёт»: имя — в начальной форме, склонять его автоматически ненадёжно.
+                if (counterparty != null && account.balance.minor != 0L) {
+                    Text(
+                        stringResource(if (toMe) Res.string.fin_debt_returns else Res.string.fin_debt_waits, counterparty),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
                 Text(
                     (if (toMe && account.balance.minor > 0) "+" else "") + formatMoney(account.balance),
                     style = MaterialTheme.typography.titleSmall,

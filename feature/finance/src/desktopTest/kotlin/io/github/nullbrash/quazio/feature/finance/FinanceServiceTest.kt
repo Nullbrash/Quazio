@@ -144,6 +144,25 @@ class FinanceServiceTest {
     }
 
     @Test
+    fun balanceIsSetThroughAdjustmentOperations() {
+        val debt = finance.createAccount(accountId, "Долг", FinAccountType.DEBT)
+        // При создании: первая операция — «Начальный остаток».
+        val first = finance.adjustBalanceTo(accountId, debt, -500_000, "Начальный остаток", 1_000, tz)
+        assertNotNull(first)
+        assertEquals(Money.rub(-500_000), finance.accounts(accountId).first { it.id == debt }.balance)
+        // Позже: вводится итоговая цифра, создаётся корректировка на разницу.
+        finance.adjustBalanceTo(accountId, debt, -200_000, "Корректировка баланса", 2_000, tz)
+        assertEquals(Money.rub(-200_000), finance.accounts(accountId).first { it.id == debt }.balance)
+        val ops = finance.transactions(accountId, 0, 10_000)
+        assertEquals(listOf(300_000L, -500_000L), ops.map { it.amount.minor })
+        assertTrue(ops.all { it.kind == TxnKind.ADJUSTMENT })
+        // Та же цифра — ничего не создаётся.
+        assertNull(finance.adjustBalanceTo(accountId, debt, -200_000, "Корректировка баланса", 3_000, tz))
+        // Корректировки не входят в доходы и расходы.
+        assertEquals(Money.rub(0), finance.totals(accountId, 0, 10_000).expense)
+    }
+
+    @Test
     fun invalidDraftsAreRejected() {
         assertFailsWith<IllegalArgumentException> { expense(0, cash().id) }
         assertFailsWith<IllegalArgumentException> {
