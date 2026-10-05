@@ -172,6 +172,8 @@
     <string name="cal_choose">Выбрать</string>
     <string name="cal_default_hint">Сюда Quazio будет записывать новые события. Для отдельного события календарь можно сменить в его окне.</string>
     <string name="fin_accounts_order">Порядок счетов</string>
+    <string name="fin_accounts_title">Счета</string>
+    <string name="fin_all_accounts">Всего на счетах: %1$s</string>
     <string name="fin_accounts_order_hint">Перетащите счёт: на телефоне — долгим нажатием на строку, мышью — за ≡. Так счета идут в списке и при выборе счёта. Архивные — всегда в конце.</string>
     <string name="fin_drag">Перетащить</string>
     <string name="fin_move_up">Выше</string>

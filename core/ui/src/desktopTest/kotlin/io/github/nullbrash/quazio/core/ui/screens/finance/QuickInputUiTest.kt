@@ -73,7 +73,7 @@ class QuickInputUiTest {
         val mom = finance.createAccount(accountId, "Мама", FinAccountType.DEBT, openingBalanceMinor = 5_000_000)
         setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
         // Текст пришёл, когда экран уже открыт (второе «В учёт Quazio»).
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Мама", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Всего на счетах", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         incoming.offer("Забрал:\n14.07: - 2 000р.\n18.07: - 500р.\n\n= - 2 500р.\n\nОстаток: 47 500р.")
         waitUntil("текст принят экраном", timeoutMillis = 10_000) { incoming.text.value == null }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Сохранить (2)")).fetchSemanticsNodes().isNotEmpty() }

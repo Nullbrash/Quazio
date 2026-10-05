@@ -22,6 +22,7 @@ import io.github.nullbrash.quazio.feature.finance.FinAccountType
 import io.github.nullbrash.quazio.feature.finance.FinanceService
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 /** «⋮ → Порядок счетов»: стрелки двигают счёт, порядок сразу сохраняется в базе. */
 @OptIn(ExperimentalTestApi::class)
@@ -48,8 +49,11 @@ class AccountsOrderUiTest {
         finance.createAccount(accountId, "Карта", FinAccountType.CARD)
         finance.createAccount(accountId, "Копилка", FinAccountType.SAVINGS)
         setContent { MaterialTheme { FinanceScreen(services) } }
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Копилка", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithContentDescription("Ещё").performClick()
+        // Счета — на своём экране: «Всего на счетах» → «Счета» (две карточки в ряд) → «Порядок счетов».
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Всего на счетах", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(onAllNodes(hasText("Копилка")).fetchSemanticsNodes().isEmpty()) // на главном карточек нет
+        onNodeWithText("Всего на счетах", substring = true).performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Копилка")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText("Порядок счетов").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Архивные", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         // По имени: Карта, Копилка, Наличные → «Наличные» выше дважды.

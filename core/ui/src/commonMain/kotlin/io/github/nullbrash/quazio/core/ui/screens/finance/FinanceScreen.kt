@@ -66,7 +66,7 @@ import io.github.nullbrash.quazio.core.ui.res.fin_export_csv
 import io.github.nullbrash.quazio.core.ui.res.fin_export_done
 import io.github.nullbrash.quazio.core.ui.res.fin_export_failed
 import io.github.nullbrash.quazio.core.ui.res.fin_more
-import io.github.nullbrash.quazio.core.ui.res.fin_accounts_order
+import io.github.nullbrash.quazio.core.ui.res.fin_all_accounts
 import io.github.nullbrash.quazio.core.ui.res.quick_none
 import io.github.nullbrash.quazio.engine.quickinput.QuickDraft
 import io.github.nullbrash.quazio.engine.quickinput.QuickLine
@@ -111,6 +111,7 @@ private sealed interface FinanceView {
     data object Categories : FinanceView
     data object Tags : FinanceView
     data object AccountsOrder : FinanceView
+    data object Accounts : FinanceView
     /** Одна операция из быстрого ввода — сразу окно операции с заполненными полями. */
     data class QuickEditor(val original: QuickDraft, val prefill: EditorPrefill) : FinanceView
     /** Пост из нескольких строк — список черновиков. */
@@ -195,9 +196,16 @@ fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.Loca
             reload++
         }
         FinanceView.AccountsOrder -> AccountsOrderScreen(services, d.accountId, d.accounts) {
-            view = FinanceView.Main
+            view = FinanceView.Accounts
             reload++
         }
+        FinanceView.Accounts -> AccountsScreen(
+            data = d,
+            onBack = { view = FinanceView.Main },
+            onAccount = { accountDialog = it },
+            onNewAccount = { newAccountDialog = true },
+            onOrder = { view = FinanceView.AccountsOrder },
+        )
         is FinanceView.QuickEditor -> TransactionEditor(
             services = services, data = d, txnId = null, prefill = v.prefill,
             onDraft = { draft ->
@@ -219,12 +227,10 @@ fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.Loca
                 month = month,
                 onMonth = { month = it },
                 onTransaction = { view = FinanceView.Editor(it.id) },
-                onAccount = { accountDialog = it },
-                onNewAccount = { newAccountDialog = true },
+                onAccounts = { view = FinanceView.Accounts },
                 onCategories = { view = FinanceView.Categories },
                 onTags = { view = FinanceView.Tags },
                 onMonthClick = onOpenCalendar?.let { open -> { open(kotlinx.datetime.LocalDate(month.year, month.month, 1)) } },
-                onAccountsOrder = { view = FinanceView.AccountsOrder },
                 onExport = fileSaver?.let { saver ->
                     {
                         scope.launch {
@@ -281,12 +287,10 @@ private fun FinanceMain(
     month: io.github.nullbrash.quazio.feature.finance.YearMonth,
     onMonth: (io.github.nullbrash.quazio.feature.finance.YearMonth) -> Unit,
     onTransaction: (Transaction) -> Unit,
-    onAccount: (FinAccount) -> Unit,
-    onNewAccount: () -> Unit,
+    onAccounts: () -> Unit,
     onCategories: () -> Unit,
     onTags: () -> Unit,
     onMonthClick: (() -> Unit)?,
-    onAccountsOrder: () -> Unit,
     onExport: (() -> Unit)?,
 ) {
     val colors = data.categories.associate { it.id to it.color }
@@ -294,17 +298,14 @@ private fun FinanceMain(
     val byDay = data.transactions.groupBy { localDateTime(it.occurredAt, it.timeZone).date }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        // Счета — на своём экране (решение пользователя): здесь только сколько всего и вход туда.
         item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { onMonth(month.previous()) }) { Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null) }
-                // Нажатие на месяц — этот месяц в календаре (пожелание пользователя).
-                Text(
-                    monthTitle(month), style = MaterialTheme.typography.titleLarge,
-                    modifier = if (onMonthClick != null) Modifier.clickable(onClick = onMonthClick) else Modifier,
-                )
-                IconButton(onClick = { onMonth(month.next()) }) { Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null) }
-                Spacer(Modifier.weight(1f))
-                // Три кнопки в шапке не помещаются на телефоне — редкие действия в меню.
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).clickable(onClick = onAccounts).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(Res.string.fin_all_accounts, formatMoney(data.total)), style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null)
+                }
+                // Редкие действия — в меню.
                 Box {
                     var menu by remember { mutableStateOf(false) }
                     IconButton(onClick = { menu = true }) {
@@ -313,32 +314,33 @@ private fun FinanceMain(
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text(stringResource(Res.string.fin_categories)) }, onClick = { menu = false; onCategories() })
                         DropdownMenuItem(text = { Text(stringResource(Res.string.fin_tags)) }, onClick = { menu = false; onTags() })
-                        DropdownMenuItem(text = { Text(stringResource(Res.string.fin_accounts_order)) }, onClick = { menu = false; onAccountsOrder() })
                         if (onExport != null) {
                             DropdownMenuItem(text = { Text(stringResource(Res.string.fin_export_csv)) }, onClick = { menu = false; onExport() })
                         }
                     }
                 }
             }
+            HorizontalDivider()
+        }
+        // Месяц — по центру, над тем, что к нему относится (пожелание пользователя): нажатие ближе к середине.
+        item {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onMonth(month.previous()) }) { Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null) }
+                // Нажатие на месяц — этот месяц в календаре.
+                Text(
+                    monthTitle(month), style = MaterialTheme.typography.titleLarge,
+                    modifier = if (onMonthClick != null) Modifier.clickable(onClick = onMonthClick) else Modifier,
+                )
+                IconButton(onClick = { onMonth(month.next()) }) { Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null) }
+            }
         }
         item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Итоги месяца — равномерно по ширине, под месяцем по центру.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 TotalCell(stringResource(Res.string.fin_income), formatMoney(data.totals.income), INCOME_COLOR)
                 TotalCell(stringResource(Res.string.fin_expense), formatMoney(data.totals.expense), null)
                 TotalCell(stringResource(Res.string.fin_net), formatMoney(data.totals.net), null)
             }
-        }
-        item {
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val tagsById = data.tags.associateBy { it.id }
-                items(data.accounts, key = { it.id }) { account -> AccountCard(account, account.personTagId?.let(tagsById::get)) { onAccount(account) } }
-                item { AssistChip(onClick = onNewAccount, label = { Text(stringResource(Res.string.fin_add_account)) }, leadingIcon = { Icon(Icons.Filled.Add, null) }) }
-            }
-            Text(
-                stringResource(Res.string.fin_in_total, formatMoney(data.total)),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
             HorizontalDivider(Modifier.padding(top = 8.dp))
         }
         if (data.transactions.isEmpty()) {
@@ -369,9 +371,9 @@ private fun TotalCell(label: String, value: String, color: Color?) {
 }
 
 @Composable
-private fun AccountCard(account: FinAccount, counterparty: Tag?, onClick: () -> Unit) {
+internal fun AccountCard(account: FinAccount, counterparty: Tag?, modifier: Modifier = Modifier, onClick: () -> Unit) {
     // Одинаковый размер у всех карточек (пожелание пользователя): длинное — с многоточием.
-    OutlinedCard(onClick = onClick, modifier = Modifier.width(ACCOUNT_CARD_WIDTH).height(ACCOUNT_CARD_HEIGHT)) {
+    OutlinedCard(onClick = onClick, modifier = modifier.height(ACCOUNT_CARD_HEIGHT)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (account.type == FinAccountType.DEBT) {
@@ -406,7 +408,6 @@ private fun AccountCard(account: FinAccount, counterparty: Tag?, onClick: () -> 
     }
 }
 
-private val ACCOUNT_CARD_WIDTH = 150.dp
 private val ACCOUNT_CARD_HEIGHT = 92.dp
 
 @Composable
