@@ -121,7 +121,6 @@ fun CalendarScreen(
     var date by remember { mutableStateOf(jumpTo ?: today) }
     var cursor by remember { mutableLongStateOf(now) }
     var live by remember { mutableStateOf(true) }
-    var forced24 by remember { mutableStateOf(false) }
     var enabled by remember { mutableStateOf(prefs.enabled && access?.granted() != false) }
     var calendars by remember { mutableStateOf(cache.calendars) }
     var events by remember { mutableStateOf(cache.events) }
@@ -149,16 +148,14 @@ fun CalendarScreen(
     fun backToNow() {
         cursor = now
         live = true
-        forced24 = false
         date = today
     }
-    /** Другой день — то же время суток; не сегодня — сутки целиком (решение по фазе 2). */
+    /** Другой день — то же время суток. Вид «12 / 24 ч» — один на все дни (решение пользователя). */
     fun openDay(d: LocalDate) {
         if (d == today) backToNow() else {
             val timeOfDay = now - today.startMillis(zone)
             cursor = d.startMillis(zone) + timeOfDay
             live = false
-            forced24 = true
             date = d
         }
         view = CalendarView.DAY
@@ -220,10 +217,10 @@ fun CalendarScreen(
             val open: (CalendarEvent) -> Unit = { e -> target = EventTarget(e.eventId, e.instanceStart, e.recurring, null) }
             when (view) {
                 CalendarView.DAY -> {
-                    val full24 = dial24 || forced24
+                    val full24 = dial24
                     DayView(
                         dayDate, today, cursor, live, zone, events, calendarName, full24,
-                        onToggle = { dial24 = it; prefs.dial24 = it; forced24 = false },
+                        onToggle = { dial24 = it; prefs.dial24 = it },
                         onShiftDay = { n -> openDay(dayDate.plus(DatePeriod(days = n))) },
                         // 12 часов — 2 минуты на градус, сутки — 4.
                         onDrag = { deg -> cursor += (deg * (if (full24) 4f else 2f) * 60_000f).toLong(); live = false },

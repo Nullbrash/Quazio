@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.geometry.Offset
@@ -151,7 +153,9 @@ class CalendarScreenUiTest {
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithContentDescription("Следующий день").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Завтрашнее")).fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithText("24 ч").assertExists() // другой день — сутки целиком
+        // Вид «12 / 24 ч» — один на все дни: при смене дня сам не меняется (замечание пользователя).
+        onNodeWithText("12 ч").assertIsSelected()
+        onNodeWithText("24 ч").assertIsNotSelected()
         onNodeWithContentDescription("Предыдущий день").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isNotEmpty() }
     }

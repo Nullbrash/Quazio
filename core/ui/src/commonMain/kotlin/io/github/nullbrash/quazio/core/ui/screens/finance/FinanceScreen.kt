@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -369,7 +370,8 @@ private fun TotalCell(label: String, value: String, color: Color?) {
 
 @Composable
 private fun AccountCard(account: FinAccount, counterparty: Tag?, onClick: () -> Unit) {
-    OutlinedCard(onClick = onClick) {
+    // Одинаковый размер у всех карточек (пожелание пользователя): длинное — с многоточием.
+    OutlinedCard(onClick = onClick, modifier = Modifier.width(ACCOUNT_CARD_WIDTH).height(ACCOUNT_CARD_HEIGHT)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (account.type == FinAccountType.DEBT) {
@@ -385,17 +387,17 @@ private fun AccountCard(account: FinAccount, counterparty: Tag?, onClick: () -> 
                         org -> Res.string.fin_debt_return_to_org
                         else -> Res.string.fin_debt_return_to_person
                     }
-                    Text(stringResource(res, shown), style = MaterialTheme.typography.labelSmall)
+                    Text(stringResource(res, shown), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Text(
                     (if (toMe && account.balance.minor > 0) "+" else "") + formatMoney(account.balance),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (toMe) INCOME_COLOR else MaterialTheme.colorScheme.error,
                 )
             } else {
                 Text(
                     formatMoney(account.balance),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (account.balance.isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -403,6 +405,9 @@ private fun AccountCard(account: FinAccount, counterparty: Tag?, onClick: () -> 
         }
     }
 }
+
+private val ACCOUNT_CARD_WIDTH = 150.dp
+private val ACCOUNT_CARD_HEIGHT = 92.dp
 
 @Composable
 private fun TransactionRow(t: Transaction, categoryColor: Long?, debtIds: Set<String>, onClick: () -> Unit) {
