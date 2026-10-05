@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -21,6 +23,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.accounts.Account
 import io.github.nullbrash.quazio.core.accounts.AccountService
@@ -76,6 +84,15 @@ fun AccountsSection(service: AccountService) {
 
     if (adding) {
         var name by remember { mutableStateOf("") }
+        val submit = {
+            if (name.isNotBlank()) {
+                adding = false
+                scope.launch {
+                    withContext(Dispatchers.IO) { service.create(name) }
+                    reload()
+                }
+            }
+        }
         AlertDialog(
             onDismissRequest = { adding = false },
             title = { Text(stringResource(Res.string.accounts_add)) },
@@ -85,19 +102,19 @@ fun AccountsSection(service: AccountService) {
                     onValueChange = { if (it.length <= 50) name = it },
                     label = { Text(stringResource(Res.string.accounts_name)) },
                     singleLine = true,
+                    // «Готово» на клавиатуре телефона и Enter на ПК — то же, что кнопка «Создать».
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    modifier = Modifier.onPreviewKeyEvent { e ->
+                        val enter = e.key == Key.Enter || e.key == Key.NumPadEnter
+                        if (enter && e.type == KeyEventType.KeyDown) { submit(); true } else false
+                    },
                 )
             },
             confirmButton = {
-                TextButton(
-                    enabled = name.isNotBlank(),
-                    onClick = {
-                        adding = false
-                        scope.launch {
-                            withContext(Dispatchers.IO) { service.create(name) }
-                            reload()
-                        }
-                    },
-                ) { Text(stringResource(Res.string.accounts_create)) }
+                TextButton(enabled = name.isNotBlank(), onClick = { submit() }) {
+                    Text(stringResource(Res.string.accounts_create))
+                }
             },
             dismissButton = { TextButton(onClick = { adding = false }) { Text(stringResource(Res.string.action_cancel)) } },
         )
