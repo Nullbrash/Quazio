@@ -43,8 +43,6 @@ import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.res.Res
-import io.github.nullbrash.quazio.core.ui.res.acc_debt_i_owe
-import io.github.nullbrash.quazio.core.ui.res.acc_debt_owed_to_me
 import io.github.nullbrash.quazio.core.ui.res.fin_add_account
 import io.github.nullbrash.quazio.core.ui.res.fin_add_txn
 import io.github.nullbrash.quazio.core.ui.res.fin_archived
@@ -78,6 +76,7 @@ internal data class FinanceData(
     val transactions: List<Transaction>,
     val categories: List<CategoryNode>,
     val tags: List<Tag>,
+    val calculatorOnNew: Boolean,
 )
 
 private sealed interface FinanceView {
@@ -110,6 +109,7 @@ fun FinanceScreen(services: AppServices) {
                 transactions = finance.transactions(accountId, from, to),
                 categories = finance.categories(accountId),
                 tags = finance.tags(accountId),
+                calculatorOnNew = finance.openCalculatorOnNew,
             )
         }
     }
@@ -238,10 +238,13 @@ private fun AccountCard(account: FinAccount, onClick: () -> Unit) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(account.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (account.type == FinAccountType.DEBT) {
-                // Долг: подпись вместо знака — «мне должны» / «я должен».
-                val owedToMe = !account.balance.isNegative
-                Text(stringResource(if (owedToMe) Res.string.acc_debt_owed_to_me else Res.string.acc_debt_i_owe), style = MaterialTheme.typography.labelSmall)
-                Text(formatMoney(if (owedToMe) account.balance else -account.balance), style = MaterialTheme.typography.titleSmall)
+                // Долг: знак говорит, кто кому должен — «+» вам вернут, «−» вернёте вы.
+                val toMe = !account.balance.isNegative
+                Text(
+                    (if (toMe && account.balance.minor > 0) "+" else "") + formatMoney(account.balance),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (toMe) INCOME_COLOR else MaterialTheme.colorScheme.error,
+                )
             } else {
                 Text(
                     formatMoney(account.balance),

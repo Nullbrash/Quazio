@@ -31,6 +31,8 @@ fun SettingsScreen(versionName: String, services: AppServices, deviceAuth: Devic
         HorizontalDivider()
         SecuritySection(services, deviceAuth)
         HorizontalDivider()
+        FinanceSettingsSection(services)
+        HorizontalDivider()
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.settings_about), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(Res.string.app_name), style = MaterialTheme.typography.headlineSmall)

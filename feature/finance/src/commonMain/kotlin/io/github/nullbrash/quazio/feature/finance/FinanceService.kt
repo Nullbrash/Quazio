@@ -18,6 +18,13 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
     private val q get() = db.financeQueries
     private val changeLog = ChangeLog(db)
 
+    // ===== Настройки этого устройства =====
+
+    /** Открывать калькулятор сразу при добавлении операции (по умолчанию — да). */
+    var openCalculatorOnNew: Boolean
+        get() = db.appStateQueries.get(KEY_CALC_ON_NEW).executeAsOneOrNull() != "0"
+        set(value) { db.appStateQueries.put(KEY_CALC_ON_NEW, if (value) "1" else "0") }
+
     // ===== Стартовый набор =====
 
     /** Категории и счёт «Наличные» для нового аккаунта; повторно ничего не делает. */
@@ -359,6 +366,7 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         const val T_TAG = "tag"
         const val T_TXN = "txn"
         const val T_TXN_TAG = "txn_tag"
+        const val KEY_CALC_ON_NEW = "finance.calc_on_new"
 
         fun flag(b: Boolean) = if (b) "1" else "0"
         fun normalize(s: String) = s.trim().lowercase().replace(Regex("\\s+"), " ")

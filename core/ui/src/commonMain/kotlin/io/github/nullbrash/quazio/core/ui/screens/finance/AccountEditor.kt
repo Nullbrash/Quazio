@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,7 +63,11 @@ internal fun AccountEditor(services: AppServices, accountId: String, account: Fi
     var type by remember { mutableStateOf(account?.type ?: FinAccountType.CARD) }
     var opening by remember { mutableStateOf(account?.let { "" } ?: "0") }
     var limit by remember { mutableStateOf(account?.creditLimit?.minor?.let(::formatAmountForEdit).orEmpty()) }
-    var person by remember { mutableStateOf(tags.firstOrNull { it.id == account?.personTagId }?.name.orEmpty()) }
+    val existingCounterparty = tags.firstOrNull { it.id == account?.personTagId }
+    var person by remember { mutableStateOf(existingCounterparty?.name.orEmpty()) }
+    var personKind by remember { mutableStateOf(existingCounterparty?.kind ?: TagKind.PERSON) }
+    // Люди и организации — те же метки, что у операций: подсказываются отовсюду.
+    val counterparties = tags.filter { it.kind == TagKind.PERSON || it.kind == TagKind.ORGANIZATION }
     var includeInTotal by remember { mutableStateOf(account?.includeInTotal ?: type.defaultIncludeInTotal) }
     var touchedInclude by remember { mutableStateOf(account != null) }
     var archived by remember { mutableStateOf(account?.archived ?: false) }
@@ -87,8 +92,10 @@ internal fun AccountEditor(services: AppServices, accountId: String, account: Fi
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val personTagId = if (type == FinAccountType.DEBT && person.isNotBlank())
-                        services.finance.createTag(accountId, person, TagKind.PERSON).id else null
+                    val personTagId = if (type == FinAccountType.DEBT && person.isNotBlank()) {
+                        counterparties.firstOrNull { it.name.equals(person.trim(), ignoreCase = true) }?.id
+                            ?: services.finance.createTag(accountId, person, personKind).id
+                    } else null
                     if (account == null) {
                         services.finance.createAccount(accountId, name, type, openingMinor, limitMinor, includeInTotal, personTagId)
                     } else {
@@ -132,6 +139,21 @@ internal fun AccountEditor(services: AppServices, accountId: String, account: Fi
                 }
                 if (type == FinAccountType.DEBT) {
                     FinField(person, { person = it }, stringResource(Res.string.acc_person), Modifier.fillMaxWidth(), onSubmit = save)
+                    val q = person.trim()
+                    val known = counterparties.firstOrNull { it.name.equals(q, ignoreCase = true) }
+                    val hints = counterparties.filter { q.isNotEmpty() && it.name.contains(q, ignoreCase = true) && it != known }.take(5)
+                    if (hints.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            hints.forEach { h -> SuggestionChip(onClick = { person = h.name; personKind = h.kind }, label = { Text(h.name) }) }
+                        }
+                    }
+                    if (q.isNotEmpty() && known == null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(TagKind.PERSON, TagKind.ORGANIZATION).forEach { k ->
+                                FilterChip(selected = personKind == k, onClick = { personKind = k }, label = { Text(stringResource(k.label)) })
+                            }
+                        }
+                    }
                 }
                 SwitchRow(stringResource(Res.string.acc_in_total), includeInTotal) { includeInTotal = it; touchedInclude = true }
                 if (account != null) SwitchRow(stringResource(Res.string.acc_archived), archived) { archived = it }

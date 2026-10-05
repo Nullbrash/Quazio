@@ -26,6 +26,7 @@ import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
+import io.github.nullbrash.quazio.core.ui.res.calc_on_new
 import io.github.nullbrash.quazio.core.ui.res.fin_no_category
 import io.github.nullbrash.quazio.core.ui.res.lock_done
 import io.github.nullbrash.quazio.core.ui.res.txn_account
@@ -116,7 +118,8 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
     var pickTime by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     // Новая операция начинается с суммы — калькулятор сразу (как в Wallet по нажатию на сумму).
-    var showCalc by remember { mutableStateOf(txnId == null) }
+    var calcOnNew by remember { mutableStateOf(data.calculatorOnNew) }
+    var showCalc by remember { mutableStateOf(txnId == null && data.calculatorOnNew) }
 
     LaunchedEffect(txnId) {
         if (txnId == null) return@LaunchedEffect
@@ -198,7 +201,19 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
                 }
             }
             Column {
-                Text(stringResource(if (kind == TxnKind.ADJUSTMENT) Res.string.txn_amount_adjustment else Res.string.txn_amount), style = MaterialTheme.typography.labelLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(if (kind == TxnKind.ADJUSTMENT) Res.string.txn_amount_adjustment else Res.string.txn_amount), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    // Настройка прямо здесь, чтобы не ходить в «Настройки» (пожелание пользователя).
+                    Text(stringResource(Res.string.calc_on_new), style = MaterialTheme.typography.labelMedium)
+                    Switch(
+                        checked = calcOnNew,
+                        onCheckedChange = { on ->
+                            calcOnNew = on
+                            scope.launch { withContext(Dispatchers.IO) { finance.openCalculatorOnNew = on } }
+                        },
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
                 OutlinedButton(onClick = { showCalc = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(amountText.ifEmpty { "0" } + " ₽", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.fillMaxWidth())
                 }
