@@ -98,6 +98,8 @@ internal fun currentMonth(): YearMonth = localDateTime(nowMillis(), currentZone(
 /** «5 октября, воскресенье». */
 internal fun dayTitle(dt: LocalDateTime) = "${dt.day} ${MONTHS_GENITIVE[dt.month.ordinal]}, ${WEEKDAYS[dt.dayOfWeek.ordinal]}"
 
+internal fun dayMonth(dt: LocalDateTime) = "${dt.day} ${MONTHS_GENITIVE[dt.month.ordinal]}"
+
 internal fun dateText(dt: LocalDateTime) =
     "${dt.day.toString().padStart(2, '0')}.${(dt.month.ordinal + 1).toString().padStart(2, '0')}.${dt.year}"
 

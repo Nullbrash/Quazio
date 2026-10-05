@@ -86,5 +86,20 @@ sealed interface QuickLine {
     data class Balance(override val text: String, val amountMinor: Long, val accountId: String?) : QuickLine
 
     /** Не операция: «не брал», заголовок, дата, непонятное. [signedMinor] — участие в сверке. */
-    data class Skipped(override val text: String, val signedMinor: Long? = null) : QuickLine
+    data class Skipped(
+        override val text: String,
+        val signedMinor: Long? = null,
+        val reason: SkipReason = SkipReason.UNKNOWN,
+    ) : QuickLine
+}
+
+/** Почему строка не стала операцией — показывается пользователю. */
+enum class SkipReason {
+    /** «За 5-ое по 500р не брал» — деньги не двигались. */
+    NEGATED,
+    /** «Забрал:» — относится к строкам ниже. */
+    HEADER,
+    /** «29 августа 2022 17 09 17» — дата для строк ниже. */
+    DATE,
+    UNKNOWN,
 }

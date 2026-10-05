@@ -248,6 +248,7 @@ class QuickParserTest {
         assertEquals("Забрал 2 000р.\n- 2 000р", op.text)
         val norm = assertIs<QuickLine.Skipped>(lines[1])
         assertEquals(rub(500), norm.signedMinor)
+        assertEquals(SkipReason.NEGATED, norm.reason)
         val total = assertIs<QuickLine.Total>(lines[2])
         assertEquals(-rub(1500), total.expectedMinor)
         assertTrue(total.matches, "$total")
@@ -330,6 +331,7 @@ class QuickParserTest {
             vocab, today,
         )
         assertTrue(lines.none { it is QuickLine.Operation }, "$lines")
+        assertEquals(SkipReason.DATE, assertIs<QuickLine.Skipped>(lines[0]).reason)
     }
 
     @Test

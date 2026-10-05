@@ -74,13 +74,37 @@ class QuickInputUiTest {
         incoming.offer("Забрал:\n14.07: - 2 000р.\n18.07: - 500р.\n\n= - 2 500р.\n\nОстаток: 47 500р.")
         waitUntil("текст принят экраном", timeoutMillis = 10_000) { incoming.text.value == null }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Сохранить (2)")).fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithText("— сходится", substring = true).assertExists() // в суммах неразрывные пробелы
-        onNodeWithText("Сходится").assertExists()
+        onNodeWithText("совпадает со строками выше", substring = true).assertExists()
+        onNodeWithText("Совпадает с вашим остатком", substring = true).assertExists()
         onNodeWithText("Сохранить (2)").performClick()
         waitUntil(timeoutMillis = 10_000) { all().size == 2 }
 
         assertTrue(all().all { it.kind == TxnKind.TRANSFER && it.finAccountId == piggy })
         assertEquals(4_750_000, finance.accounts(accountId).first { it.id == piggy }.balance.minor)
+    }
+
+    @Test
+    fun postWithoutSavingsAccountCreatesItAndFixesBalance() = runComposeUiTest {
+        // Пост в стиле пользователя (суммы изменены); копилки в Quazio ещё нет.
+        incoming.offer("Забрал 1 200р.\n- 1 200р.\n\nЗа 1-4-ое по 500р не брал\n+ 2 000р.\n\n= + 800р.\n\nОстаток: 61 000р.")
+        setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Нашлось в тексте", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("1 операция", substring = true).assertExists()
+        onNodeWithText("вы пишете, что деньги не брали", substring = true).assertExists()
+        onNodeWithText("совпадает со строками выше", substring = true).assertExists()
+        onNodeWithText("на каком счёте", substring = true).assertExists()
+
+        // «Откуда» не выбран — сохранить нельзя; выбираем, создав «Накопления» прямо из карточки.
+        onAllNodes(hasText("выбрать счёт"))[0].performClick()
+        onNodeWithText("+ Создать счёт «Накопления»").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Поправить баланс", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Поправить баланс", substring = true).performClick()
+        onNodeWithText("Сохранить (1)").performClick()
+        waitUntil(timeoutMillis = 10_000) { all().size == 2 } // перевод + поправка баланса
+
+        val byName = finance.accounts(accountId).associateBy { it.name }
+        assertEquals(6_100_000, byName.getValue("Накопления").balance.minor)
+        assertEquals(120_000, byName.getValue("Наличные").balance.minor)
     }
 
     @Test

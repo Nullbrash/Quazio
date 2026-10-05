@@ -49,7 +49,7 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
             lx.type == LineType.TOTAL -> {
                 val expected = lx.amount?.let { it * (lx.sign ?: 1) }
                 if (expected == null) {
-                    skip(lx.text, null)
+                    skip(lx.text, null, SkipReason.UNKNOWN)
                 } else {
                     out += QuickLine.Total(lx.text, expected, running)
                     running = expected
@@ -59,7 +59,7 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
             }
             lx.type == LineType.BALANCE -> {
                 val amount = lx.amount
-                if (amount == null) skip(lx.text, null) else {
+                if (amount == null) skip(lx.text, null, SkipReason.UNKNOWN) else {
                     val named = interpreter.interpret(lx).takeIf { it.accountNamed }?.accountId
                     out += QuickLine.Balance(lx.text, amount, named ?: focusAccount)
                 }
@@ -67,7 +67,7 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
             }
             lx.dateOnly -> {
                 contextDate = lx.date
-                skip(lx.text, null)
+                skip(lx.text, null, SkipReason.DATE)
                 restatable = null
             }
             lx.tokens.isEmpty() && lx.amount != null -> amountOnly(lx, lx.amount)
@@ -89,14 +89,15 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
                 restatable = null
             }
             singleLine -> full(lx, amount)
-            else -> skip(lx.text, lx.sign?.let { it * amount }).also { restatable = null }
+            else -> skip(lx.text, lx.sign?.let { it * amount }, SkipReason.UNKNOWN).also { restatable = null }
         }
     }
 
     private fun wordsOnly(lx: Lexed) {
         val it = interpreter.interpret(lx)
-        skip(lx.text, null)
-        if (it.hasAction && !it.negated) {
+        val isHeader = it.hasAction && !it.negated
+        skip(lx.text, null, if (isHeader) SkipReason.HEADER else SkipReason.UNKNOWN)
+        if (isHeader) {
             header = it
             headerUsed = false
             restatable = null
@@ -110,7 +111,7 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
         if (it.negated) {
             // «За 5-ое по 500р не брал» — не операция, но в сверке участвует (недобранное — в плюс).
             val signed = amount * (lx.sign ?: 1)
-            skip(lx.text, signed)
+            skip(lx.text, signed, SkipReason.NEGATED)
             running += signed
             restatable = out.lastIndex
             return
@@ -143,9 +144,9 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
             is QuickLine.Skipped -> {
                 val signed = amount * (lx.sign ?: 1)
                 running += signed - (prev.signedMinor ?: 0)
-                out[index] = QuickLine.Skipped(text, signed)
+                out[index] = prev.copy(text = text, signedMinor = signed)
             }
-            else -> skip(lx.text, null)
+            else -> skip(lx.text, null, SkipReason.UNKNOWN)
         }
         restatable = null
     }
@@ -160,8 +161,8 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
         }
     }
 
-    private fun skip(text: String, signed: Long?) {
-        out += QuickLine.Skipped(text, signed)
+    private fun skip(text: String, signed: Long?, reason: SkipReason) {
+        out += QuickLine.Skipped(text, signed, reason)
     }
 
     private fun defaultSigned(kind: QuickKind, amount: Long) = when (kind) {
