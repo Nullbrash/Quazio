@@ -5,6 +5,11 @@ import io.github.nullbrash.quazio.core.accounts.AccountService
 import io.github.nullbrash.quazio.core.accounts.DeviceClock
 import io.github.nullbrash.quazio.core.db.QuazioDatabase
 import io.github.nullbrash.quazio.core.model.Money
+import io.github.nullbrash.quazio.engine.quickinput.QuickKind
+import io.github.nullbrash.quazio.engine.quickinput.QuickLine
+import io.github.nullbrash.quazio.engine.quickinput.QuickParser
+import io.github.nullbrash.quazio.engine.quickinput.WordRule
+import kotlinx.datetime.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -204,6 +209,37 @@ class FinanceServiceTest {
         assertTrue(finance.tags(accountId).isEmpty())
         assertTrue(finance.transactions(accountId, Long.MIN_VALUE, Long.MAX_VALUE).isEmpty())
         assertTrue(finance.merchantSuggestions(accountId, "s").isEmpty())
+    }
+
+    @Test
+    fun quickInputSeesCategoriesMerchantsAndMemory() {
+        val card = finance.createAccount(accountId, "Карта", FinAccountType.CARD)
+        val hosting = "$accountId:c:online.hosting"
+        expense(30_000, card, merchant = "CraftHost", category = hosting)
+        val v = finance.quickVocabulary(accountId)
+        assertEquals(hosting, v.merchants["CraftHost"])
+        assertEquals("online.hosting", v.categories.first { it.id == hosting }.key)
+        assertFalse(v.categories.first { it.id == "$accountId:c:online" }.leaf)
+        val draft = (QuickParser.parse("crafthost 300", v, LocalDate(2026, 10, 5)).single() as QuickLine.Operation).draft
+        assertEquals("CraftHost", draft.merchant)
+        assertEquals(hosting, draft.categoryId)
+
+        // Правки сливаются по полям: второе запоминание не стирает первое.
+        finance.rememberQuickWord(accountId, "забрал", WordRule(kind = QuickKind.EXPENSE))
+        finance.rememberQuickWord(accountId, "забрал", WordRule(accountId = cash().id))
+        assertEquals(WordRule(kind = QuickKind.EXPENSE, accountId = cash().id), finance.quickVocabulary(accountId).wordRules["забрал"])
+        finance.purgeAccountData(accountId)
+        assertTrue(finance.quickVocabulary(accountId).wordRules.isEmpty())
+    }
+
+    @Test
+    fun quickInputTagsAndSource() {
+        val ids = finance.tagIdsFor(accountId, listOf("работа", "Работа"))
+        assertEquals(1, ids.size)
+        assertEquals(ids, finance.tagIdsFor(accountId, listOf("РАБОТА")))
+        val id = finance.saveTransaction(accountId, TransactionDraft(kind = TxnKind.EXPENSE, amountMinor = 6_400, finAccountId = cash().id,
+            tagIds = ids, occurredAt = wall, timeZone = tz, source = TxnSource.QUICK_INPUT))
+        assertEquals("quickinput", db.financeQueries.txnById(id).executeAsOne().source)
     }
 
     @Test

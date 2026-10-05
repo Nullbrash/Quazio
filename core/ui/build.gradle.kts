@@ -36,6 +36,12 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+        // Проверка экранов без окна: настоящая база в памяти, клики и ввод текста через семантику.
+        getByName("desktopTest").dependencies {
+            implementation(libs.compose.ui.test)
+            implementation(compose.desktop.currentOs)
+            implementation(libs.sqldelight.sqlite.driver)
+        }
     }
 }
 

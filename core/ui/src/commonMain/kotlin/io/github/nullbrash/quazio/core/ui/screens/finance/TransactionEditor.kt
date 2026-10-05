@@ -52,7 +52,6 @@ import io.github.nullbrash.quazio.core.ui.res.lock_done
 import io.github.nullbrash.quazio.core.ui.res.txn_account
 import io.github.nullbrash.quazio.core.ui.res.txn_add_tag
 import io.github.nullbrash.quazio.core.ui.res.txn_amount
-import io.github.nullbrash.quazio.core.ui.res.txn_bad_amount
 import io.github.nullbrash.quazio.core.ui.res.txn_category
 import io.github.nullbrash.quazio.core.ui.res.txn_debt
 import io.github.nullbrash.quazio.core.ui.res.txn_debt_sign_hint
@@ -64,9 +63,6 @@ import io.github.nullbrash.quazio.core.ui.res.txn_description_hint
 import io.github.nullbrash.quazio.core.ui.res.txn_edit
 import io.github.nullbrash.quazio.core.ui.res.txn_from_account
 import io.github.nullbrash.quazio.core.ui.res.txn_merchant
-import io.github.nullbrash.quazio.core.ui.res.txn_need_account
-import io.github.nullbrash.quazio.core.ui.res.txn_need_debt
-import io.github.nullbrash.quazio.core.ui.res.txn_need_to_account
 import io.github.nullbrash.quazio.core.ui.res.txn_new
 import io.github.nullbrash.quazio.core.ui.res.txn_new_debt
 import io.github.nullbrash.quazio.core.ui.res.txn_note
@@ -91,7 +87,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
+import io.github.nullbrash.quazio.core.ui.res.quick_draft
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -107,10 +105,21 @@ internal enum class EditorKind(val label: StringResource) {
     ADJUSTMENT(TxnKind.ADJUSTMENT.label),
 }
 
-/** Окно операции по образцу Wallet пользователя. */
+/**
+ * Окно операции по образцу Wallet пользователя.
+ * [prefill] — заполненные поля (черновик быстрого ввода). С [onDraft] «Сохранить» не пишет
+ * в базу, а отдаёт операцию вызывающему: он сохранит её сам или вернёт в список черновиков.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: String?, onClose: (changed: Boolean) -> Unit) {
+internal fun TransactionEditor(
+    services: AppServices,
+    data: FinanceData,
+    txnId: String?,
+    onClose: (changed: Boolean) -> Unit,
+    prefill: EditorPrefill? = null,
+    onDraft: ((TransactionDraft) -> Unit)? = null,
+) {
     val scope = rememberCoroutineScope()
     val finance = services.finance
     val accountId = data.accountId
@@ -120,24 +129,25 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
     val debtAccounts = accounts.filter { it.type == FinAccountType.DEBT }
 
     var loaded by remember { mutableStateOf(txnId == null) }
-    var kind by remember { mutableStateOf(EditorKind.EXPENSE) }
+    val start = prefill ?: EditorPrefill(finAccountId = ownAccounts.firstOrNull()?.id, dateTime = localDateTime(nowMillis(), zone.id))
+    var kind by remember { mutableStateOf(start.kind) }
     /** Модуль суммы в копейках; знак — отдельно ([sign]). */
-    var amountMinor by remember { mutableStateOf<Long?>(null) }
-    var sign by remember { mutableStateOf(-1) }
-    var finAccountId by remember { mutableStateOf(ownAccounts.firstOrNull()?.id) }
-    var secondAccountId by remember { mutableStateOf<String?>(null) }
-    var categoryId by remember { mutableStateOf<String?>(null) }
-    var merchant by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var tagIds by remember { mutableStateOf(setOf<String>()) }
+    var amountMinor by remember { mutableStateOf(start.amountMinor) }
+    var sign by remember { mutableStateOf(start.sign) }
+    var finAccountId by remember { mutableStateOf(start.finAccountId) }
+    var secondAccountId by remember { mutableStateOf(start.secondAccountId) }
+    var categoryId by remember { mutableStateOf(start.categoryId) }
+    var merchant by remember { mutableStateOf(start.merchant) }
+    var description by remember { mutableStateOf(start.description) }
+    var tagIds by remember { mutableStateOf(start.tagIds) }
     var tags by remember { mutableStateOf(data.tags) }
-    var dateTime by remember { mutableStateOf(localDateTime(nowMillis(), zone.id)) }
-    var note by remember { mutableStateOf("") }
+    var dateTime by remember { mutableStateOf(start.dateTime) }
+    var note by remember { mutableStateOf(start.note) }
     var error by remember { mutableStateOf<String?>(null) }
-    // Что пользователь уже выбрал сам — автозаполнение это не трогает.
-    var touchedAccount by remember { mutableStateOf(txnId != null) }
-    var touchedCategory by remember { mutableStateOf(txnId != null) }
-    var touchedTags by remember { mutableStateOf(txnId != null) }
+    // Что пользователь (или разбор быстрого ввода) уже выбрал — автозаполнение это не трогает.
+    var touchedAccount by remember { mutableStateOf(txnId != null || prefill?.finAccountId != null) }
+    var touchedCategory by remember { mutableStateOf(txnId != null || prefill?.categoryId != null) }
+    var touchedTags by remember { mutableStateOf(txnId != null || prefill?.tagIds?.isNotEmpty() == true) }
     var merchantHints by remember { mutableStateOf(emptyList<String>()) }
     var descriptionHints by remember { mutableStateOf(emptyList<String>()) }
     var pickCategory by remember { mutableStateOf(false) }
@@ -147,43 +157,24 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
     var newDebt by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var calcOnNew by remember { mutableStateOf(data.calculatorOnNew) }
-    var showCalc by remember { mutableStateOf(txnId == null && data.calculatorOnNew) }
+    var showCalc by remember { mutableStateOf(txnId == null && prefill == null && data.calculatorOnNew) }
 
     fun isDebt(id: String?) = accounts.firstOrNull { it.id == id }?.type == FinAccountType.DEBT
 
     LaunchedEffect(txnId) {
         if (txnId == null) return@LaunchedEffect
-        val d = withContext(Dispatchers.IO) { finance.transaction(txnId) } ?: return@LaunchedEffect onClose(false)
-        when {
-            d.kind == TxnKind.TRANSFER && isDebt(d.toFinAccountId) -> {
-                kind = EditorKind.DEBT; sign = -1; finAccountId = d.finAccountId; secondAccountId = d.toFinAccountId
-            }
-            d.kind == TxnKind.TRANSFER && isDebt(d.finAccountId) -> {
-                kind = EditorKind.DEBT; sign = 1; finAccountId = d.toFinAccountId; secondAccountId = d.finAccountId
-            }
-            else -> {
-                kind = when (d.kind) {
-                    TxnKind.INCOME -> EditorKind.INCOME
-                    TxnKind.EXPENSE -> EditorKind.EXPENSE
-                    TxnKind.TRANSFER -> EditorKind.TRANSFER
-                    TxnKind.ADJUSTMENT -> EditorKind.ADJUSTMENT
-                }
-                sign = when (d.kind) {
-                    TxnKind.INCOME -> 1
-                    TxnKind.ADJUSTMENT -> if (d.amountMinor < 0) -1 else 1
-                    else -> -1
-                }
-                finAccountId = d.finAccountId
-                secondAccountId = d.toFinAccountId
-            }
-        }
-        amountMinor = kotlin.math.abs(d.amountMinor)
-        categoryId = d.categoryId
-        merchant = d.merchantName.orEmpty()
-        description = d.description
-        tagIds = d.tagIds
-        dateTime = localDateTime(d.occurredAt, d.timeZone)
-        note = d.note
+        val p = withContext(Dispatchers.IO) { finance.transaction(txnId) }?.toPrefill(::isDebt) ?: return@LaunchedEffect onClose(false)
+        kind = p.kind
+        sign = p.sign
+        finAccountId = p.finAccountId
+        secondAccountId = p.secondAccountId
+        amountMinor = p.amountMinor
+        categoryId = p.categoryId
+        merchant = p.merchant
+        description = p.description
+        tagIds = p.tagIds
+        dateTime = p.dateTime
+        note = p.note
         loaded = true
     }
 
@@ -232,37 +223,13 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
         if (kind == EditorKind.INCOME || kind == EditorKind.EXPENSE) kind = if (sign > 0) EditorKind.INCOME else EditorKind.EXPENSE
     }
 
-    val badAmount = stringResource(Res.string.txn_bad_amount)
-    val needAccount = stringResource(Res.string.txn_need_account)
-    val needToAccount = stringResource(Res.string.txn_need_to_account)
-    val needDebt = stringResource(Res.string.txn_need_debt)
     val save: () -> Unit = save@{
-        val abs = amountMinor?.takeIf { it > 0 } ?: run { error = badAmount; return@save }
-        val mine = finAccountId ?: run { error = needAccount; return@save }
-        val at = toMillis(dateTime, zone)
-        val draft = when (kind) {
-            EditorKind.INCOME, EditorKind.EXPENSE -> TransactionDraft(
-                id = txnId, kind = if (kind == EditorKind.INCOME) TxnKind.INCOME else TxnKind.EXPENSE, amountMinor = abs,
-                finAccountId = mine, categoryId = categoryId, merchantName = merchant, tagIds = tagIds,
-                occurredAt = at, timeZone = zone.id, description = description, note = note,
-            )
-            EditorKind.TRANSFER -> {
-                val to = secondAccountId?.takeIf { it != mine } ?: run { error = needToAccount; return@save }
-                TransactionDraft(id = txnId, kind = TxnKind.TRANSFER, amountMinor = abs, finAccountId = mine, toFinAccountId = to,
-                    tagIds = tagIds, occurredAt = at, timeZone = zone.id, description = description, note = note)
-            }
-            EditorKind.DEBT -> {
-                val debt = secondAccountId?.takeIf { isDebt(it) } ?: run { error = needDebt; return@save }
-                // «−» — со своего счёта на долг, «+» — с долга на свой счёт.
-                val (from, to) = if (sign < 0) mine to debt else debt to mine
-                TransactionDraft(id = txnId, kind = TxnKind.TRANSFER, amountMinor = abs, finAccountId = from, toFinAccountId = to,
-                    tagIds = tagIds, occurredAt = at, timeZone = zone.id, description = description, note = note)
-            }
-            EditorKind.ADJUSTMENT -> TransactionDraft(
-                id = txnId, kind = TxnKind.ADJUSTMENT, amountMinor = sign * abs, finAccountId = mine, tagIds = tagIds,
-                occurredAt = at, timeZone = zone.id, description = description, note = note,
-            )
+        val fields = EditorPrefill(kind, sign, amountMinor, finAccountId, secondAccountId, categoryId, merchant, description, tagIds, dateTime, note)
+        val draft = when (val c = fields.check(txnId, zone, ::isDebt)) {
+            is DraftCheck.Bad -> { scope.launch { error = getString(c.error) }; return@save }
+            is DraftCheck.Ok -> c.draft
         }
+        if (onDraft != null) return@save onDraft(draft)
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { finance.saveTransaction(accountId, draft) } }
             result.onSuccess { onClose(true) }.onFailure { error = it.message }
@@ -272,7 +239,7 @@ internal fun TransactionEditor(services: AppServices, data: FinanceData, txnId: 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onClose(false) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
-            Text(stringResource(if (txnId == null) Res.string.txn_new else Res.string.txn_edit), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(stringResource(if (onDraft != null) Res.string.quick_draft else if (txnId == null) Res.string.txn_new else Res.string.txn_edit), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             if (txnId != null) TextButton(onClick = { confirmDelete = true }) { Text(stringResource(Res.string.txn_delete)) }
             Button(onClick = save, modifier = Modifier.padding(end = 8.dp)) { Text(stringResource(Res.string.txn_save)) }
         }

@@ -1,0 +1,13 @@
+-- Память быстрого ввода: что значит слово («забрал» → расход с копилки) — по правкам
+-- черновиков пользователем. Локальная, без журнала изменений: синхронизировать ли её
+-- между устройствами — решить на этапе 3. NULL в поле — это поле не запоминалось.
+CREATE TABLE quick_word (
+    account_id TEXT NOT NULL,
+    word TEXT NOT NULL,
+    kind TEXT,
+    category_id TEXT,
+    fin_account_id TEXT,
+    second_fin_account_id TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (account_id, word)
+);

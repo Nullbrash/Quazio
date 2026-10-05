@@ -10,7 +10,7 @@ kotlin {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
     android {
-        namespace = "io.github.nullbrash.quazio.feature.finance"
+        namespace = "io.github.nullbrash.quazio.engine.quickinput"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -19,15 +19,10 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api(projects.core.accounts)
-            api(projects.engine.quickinput)
             api(libs.kotlinx.datetime)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
-        }
-        getByName("desktopTest").dependencies {
-            implementation(libs.sqldelight.sqlite.driver)
         }
     }
 }

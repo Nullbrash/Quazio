@@ -111,7 +111,11 @@ data class TransactionDraft(
     val timeZone: String,
     val description: String = "",
     val note: String = "",
+    /** Откуда операция; пишется только при создании. */
+    val source: TxnSource = TxnSource.MANUAL,
 )
+
+enum class TxnSource(val dbValue: String) { MANUAL("manual"), QUICK_INPUT("quickinput") }
 
 data class Totals(val income: Money, val expense: Money) {
     val net: Money get() = income - expense

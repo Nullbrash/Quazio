@@ -1,0 +1,21 @@
+quickWordsOf:
+SELECT * FROM quick_word WHERE account_id = ?;
+
+quickWord:
+SELECT * FROM quick_word WHERE account_id = ? AND word = ?;
+
+putQuickWord:
+INSERT OR REPLACE INTO quick_word(account_id, word, kind, category_id, fin_account_id, second_fin_account_id, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteQuickWordsOf:
+DELETE FROM quick_word WHERE account_id = ?;
+
+-- Магазины с категорией последней операции — память разбора «пятёрочка 500».
+merchantsWithLastCategory:
+SELECT m.name, (
+    SELECT t.category_id FROM txn t
+    WHERE t.account_id = m.account_id AND t.merchant_id = m.id AND t.deleted = 0 AND t.category_id IS NOT NULL
+    ORDER BY t.occurred_at DESC LIMIT 1
+) AS category_id
+FROM merchant m WHERE m.account_id = ? AND m.deleted = 0;

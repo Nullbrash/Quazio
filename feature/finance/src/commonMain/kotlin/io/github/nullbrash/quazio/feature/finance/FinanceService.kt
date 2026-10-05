@@ -7,6 +7,12 @@ import io.github.nullbrash.quazio.core.model.CurrencyCode
 import io.github.nullbrash.quazio.core.model.Hlc
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.model.Uuid7
+import io.github.nullbrash.quazio.engine.quickinput.AccountRole
+import io.github.nullbrash.quazio.engine.quickinput.QuickAccount
+import io.github.nullbrash.quazio.engine.quickinput.QuickCategory
+import io.github.nullbrash.quazio.engine.quickinput.QuickKind
+import io.github.nullbrash.quazio.engine.quickinput.QuickVocabulary
+import io.github.nullbrash.quazio.engine.quickinput.WordRule
 
 /**
  * Учёт финансов одного аккаунта (`accountId` — аккаунт Quazio, не банковский счёт).
@@ -295,8 +301,8 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         if (id == null) {
             val newId = Uuid7.generate(clock.wallMillis())
             q.insertTxn(newId, accountId, draft.kind.dbValue, draft.amountMinor, "RUB", draft.finAccountId, toAccount, category, merchantId,
-                draft.occurredAt, draft.timeZone, draft.description.trim(), draft.note.trim(), "manual", null, hlc.toString())
-            changeLog.record(accountId, T_TXN, newId, hlc, fields + mapOf("currency" to "RUB", "source" to "manual"))
+                draft.occurredAt, draft.timeZone, draft.description.trim(), draft.note.trim(), draft.source.dbValue, null, hlc.toString())
+            changeLog.record(accountId, T_TXN, newId, hlc, fields + mapOf("currency" to "RUB", "source" to draft.source.dbValue))
             setTags(accountId, newId, draft.tagIds, hlc)
             newId
         } else {
@@ -377,6 +383,58 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         }
         q.merchantsOf(accountId).executeAsList().forEach { m ->
             markDeleted(accountId, T_MERCHANT, m.id) { q.setMerchantDeleted(it, m.id) }
+        }
+        db.quickInputQueries.deleteQuickWordsOf(accountId)
+    }
+
+    // ===== Быстрый ввод =====
+
+    /** Всё, что нужно разбору быстрого ввода: счета, категории, магазины, метки, память слов. */
+    fun quickVocabulary(accountId: String): QuickVocabulary {
+        val tagNames = tags(accountId).associate { it.id to it.name }
+        val accounts = accounts(accountId).filter { !it.archived }.map { a ->
+            val role = when (a.type) {
+                FinAccountType.CARD, FinAccountType.CREDIT_CARD -> AccountRole.CARD
+                FinAccountType.CASH -> AccountRole.CASH
+                FinAccountType.SAVINGS -> AccountRole.SAVINGS
+                FinAccountType.DEBT -> AccountRole.DEBT
+                else -> AccountRole.OTHER
+            }
+            QuickAccount(a.id, a.name, role, a.personTagId?.let { tagNames[it] })
+        }
+        val nodes = categories(accountId)
+        val parents = nodes.mapNotNullTo(HashSet()) { it.parentId }
+        val keyPrefix = defaultCategoryId(accountId, "")
+        val categories = nodes.map { c ->
+            QuickCategory(c.id, c.name, c.kind == CategoryKind.INCOME, c.id.takeIf { it.startsWith(keyPrefix) }?.removePrefix(keyPrefix), c.id !in parents)
+        }
+        val merchants = db.quickInputQueries.merchantsWithLastCategory(accountId).executeAsList().associate { it.name to it.category_id }
+        val rules = db.quickInputQueries.quickWordsOf(accountId).executeAsList().associate { r ->
+            r.word to WordRule(r.kind?.let { k -> QuickKind.entries.firstOrNull { it.name == k } }, r.category_id, r.fin_account_id, r.second_fin_account_id)
+        }
+        return QuickVocabulary(accounts, categories, merchants, tagNames.values.toList(), rules)
+    }
+
+    /** Запомнить правку черновика: заданные поля [change] заменяют прежние, остальные остаются. */
+    fun rememberQuickWord(accountId: String, word: String, change: WordRule) = db.transaction {
+        val qi = db.quickInputQueries
+        val old = qi.quickWord(accountId, word).executeAsOneOrNull()
+        qi.putQuickWord(
+            accountId, word,
+            change.kind?.name ?: old?.kind,
+            change.categoryId ?: old?.category_id,
+            change.accountId ?: old?.fin_account_id,
+            change.secondAccountId ?: old?.second_fin_account_id,
+            clock.wallMillis(),
+        )
+    }
+
+    /** Метки по названиям («#работа»): существующая любого вида, иначе новая тема. */
+    fun tagIdsFor(accountId: String, names: List<String>): Set<String> {
+        if (names.isEmpty()) return emptySet()
+        val existing = tags(accountId)
+        return names.mapTo(LinkedHashSet()) { name ->
+            existing.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }?.id ?: createTag(accountId, name, TagKind.TOPIC).id
         }
     }
 

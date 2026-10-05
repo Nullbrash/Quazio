@@ -63,6 +63,10 @@ import io.github.nullbrash.quazio.core.ui.res.fin_export_csv
 import io.github.nullbrash.quazio.core.ui.res.fin_export_done
 import io.github.nullbrash.quazio.core.ui.res.fin_export_failed
 import io.github.nullbrash.quazio.core.ui.res.fin_more
+import io.github.nullbrash.quazio.core.ui.res.quick_none
+import io.github.nullbrash.quazio.engine.quickinput.QuickDraft
+import io.github.nullbrash.quazio.engine.quickinput.QuickLine
+import io.github.nullbrash.quazio.engine.quickinput.QuickParser
 import io.github.nullbrash.quazio.core.ui.res.fin_in_total
 import io.github.nullbrash.quazio.core.ui.res.fin_income
 import io.github.nullbrash.quazio.core.ui.res.fin_net
@@ -102,6 +106,10 @@ private sealed interface FinanceView {
     data class Editor(val txnId: String?) : FinanceView
     data object Categories : FinanceView
     data object Tags : FinanceView
+    /** Одна операция из быстрого ввода — сразу окно операции с заполненными полями. */
+    data class QuickEditor(val original: QuickDraft, val prefill: EditorPrefill) : FinanceView
+    /** Пост из нескольких строк — список черновиков. */
+    data class QuickReview(val lines: List<QuickLine>, val prefills: List<EditorPrefill?>) : FinanceView
 }
 
 @Composable
@@ -113,6 +121,8 @@ fun FinanceScreen(services: AppServices) {
     var accountDialog by remember { mutableStateOf<FinAccount?>(null) }
     var newAccountDialog by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
+    // Текст быстрого ввода живёт до сохранения: отменили черновик — фразу можно поправить.
+    var quickText by remember { mutableStateOf("") }
     val fileSaver = LocalFileSaver.current
     val scope = rememberCoroutineScope()
 
@@ -155,6 +165,24 @@ fun FinanceScreen(services: AppServices) {
             view = FinanceView.Main
             reload++
         }
+        is FinanceView.QuickEditor -> TransactionEditor(
+            services = services, data = d, txnId = null, prefill = v.prefill,
+            onDraft = { draft ->
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) { runCatching { saveQuickDraft(services, d, v.original, draft) } }
+                    result.onSuccess { quickText = ""; view = FinanceView.Main; reload++ }
+                        .onFailure { exportMessage = it.message; view = FinanceView.Main }
+                }
+            },
+            onClose = { view = FinanceView.Main },
+        )
+        is FinanceView.QuickReview -> QuickReviewScreen(services, d, v.lines, v.prefills) { saved ->
+            view = FinanceView.Main
+            if (saved) {
+                quickText = ""
+                reload++
+            }
+        }
         FinanceView.Main -> Box(Modifier.fillMaxSize()) {
             FinanceMain(
                 data = d,
@@ -165,6 +193,28 @@ fun FinanceScreen(services: AppServices) {
                 onNewAccount = { newAccountDialog = true },
                 onCategories = { view = FinanceView.Categories },
                 onTags = { view = FinanceView.Tags },
+                quickText = quickText,
+                onQuickText = { quickText = it },
+                submitOnEnter = services.platform != "android",
+                onQuick = {
+                    scope.launch {
+                        val zone = currentZone()
+                        val today = localDateTime(nowMillis(), zone.id).date
+                        val parsed = withContext(Dispatchers.IO) {
+                            val lines = QuickParser.parse(quickText, services.finance.quickVocabulary(d.accountId), today)
+                            lines to lines.map { line ->
+                                (line as? QuickLine.Operation)?.draft?.let { it.toPrefill(services.finance.tagIdsFor(d.accountId, it.tags), zone) }
+                            }
+                        }
+                        val (lines, prefills) = parsed
+                        val ops = lines.filterIsInstance<QuickLine.Operation>()
+                        view = when {
+                            ops.isEmpty() -> { exportMessage = getString(Res.string.quick_none); FinanceView.Main }
+                            lines.size == 1 -> FinanceView.QuickEditor(ops.single().draft, prefills.single()!!)
+                            else -> FinanceView.QuickReview(lines, prefills)
+                        }
+                    }
+                },
                 onExport = fileSaver?.let { saver ->
                     {
                         scope.launch {
@@ -225,6 +275,10 @@ private fun FinanceMain(
     onNewAccount: () -> Unit,
     onCategories: () -> Unit,
     onTags: () -> Unit,
+    quickText: String,
+    onQuickText: (String) -> Unit,
+    submitOnEnter: Boolean,
+    onQuick: () -> Unit,
     onExport: (() -> Unit)?,
 ) {
     val colors = data.categories.associate { it.id to it.color }
@@ -272,6 +326,7 @@ private fun FinanceMain(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
+            QuickInputField(quickText, onQuickText, submitOnEnter, onQuick)
             HorizontalDivider(Modifier.padding(top = 8.dp))
         }
         if (data.transactions.isEmpty()) {
