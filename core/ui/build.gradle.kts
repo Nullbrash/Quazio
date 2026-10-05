@@ -32,6 +32,7 @@ kotlin {
             implementation(libs.jb.lifecycle.runtime.compose)
             implementation(libs.compose.material.icons.core)
             implementation(libs.compose.components.resources)
+            implementation(libs.compose.ui.backhandler)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

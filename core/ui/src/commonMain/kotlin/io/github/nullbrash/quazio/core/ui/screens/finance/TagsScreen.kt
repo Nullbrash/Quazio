@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.SystemBack
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.action_save
@@ -51,6 +52,7 @@ import org.jetbrains.compose.resources.stringResource
 /** Метки по видам: переименовать, сменить вид, удалить (с операций исчезнет, операции останутся). */
 @Composable
 internal fun TagsScreen(services: AppServices, accountId: String, onBack: () -> Unit) {
+    SystemBack(onBack = onBack)
     val scope = rememberCoroutineScope()
     var reload by remember { mutableIntStateOf(0) }
     var tags by remember { mutableStateOf(emptyList<Tag>()) }

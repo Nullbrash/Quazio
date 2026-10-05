@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.SystemBack
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.adj_balance
 import io.github.nullbrash.quazio.core.ui.res.fin_no_category
@@ -177,6 +178,8 @@ internal fun QuickReviewScreen(
         )
         return
     }
+
+    SystemBack { onClose(accountCreated) }
 
     newDebtFor?.let { onCreated ->
         NewDebtDialog(

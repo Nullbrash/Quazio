@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.SystemBack
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.action_save
@@ -62,6 +63,7 @@ private sealed interface CategoryDialog {
 /** Дерево категорий: добавить (в корень или подкатегорию), переименовать, удалить. */
 @Composable
 internal fun CategoriesScreen(services: AppServices, accountId: String, onBack: () -> Unit) {
+    SystemBack(onBack = onBack)
     val scope = rememberCoroutineScope()
     var kind by remember { mutableStateOf(CategoryKind.EXPENSE) }
     var reload by remember { mutableIntStateOf(0) }

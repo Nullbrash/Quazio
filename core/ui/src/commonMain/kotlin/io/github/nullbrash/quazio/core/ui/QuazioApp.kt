@@ -105,6 +105,8 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
     // Прислали текст «В учёт Quazio» — его разбирают финансы.
     val incomingText = LocalIncomingText.current?.text?.collectAsState()?.value
     LaunchedEffect(incomingText) { if (incomingText != null) current = Destination.FINANCE }
+    // «Назад» из других разделов — в «Финансы»; из «Финансов» — выход, как обычно на Android.
+    SystemBack(enabled = current != Destination.FINANCE) { current = Destination.FINANCE }
 
     // Уход в фон и возвращение — для повторного входа (одинаково на телефоне и ПК).
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { services.lock.onBackground() }

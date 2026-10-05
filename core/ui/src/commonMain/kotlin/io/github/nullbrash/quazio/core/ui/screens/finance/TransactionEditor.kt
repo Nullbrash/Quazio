@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.SystemBack
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.calc_on_new
@@ -120,6 +121,7 @@ internal fun TransactionEditor(
     prefill: EditorPrefill? = null,
     onDraft: ((TransactionDraft) -> Unit)? = null,
 ) {
+    SystemBack { onClose(false) }
     val scope = rememberCoroutineScope()
     val finance = services.finance
     val accountId = data.accountId
