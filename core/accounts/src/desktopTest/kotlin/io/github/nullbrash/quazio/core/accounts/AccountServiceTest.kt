@@ -91,6 +91,23 @@ class AccountServiceTest {
     }
 
     @Test
+    fun deletingAccountSwitchesAndPurges() {
+        val (driver, service) = open()
+        driver.use {
+            val me = service.initialize("ПК", "windows", "Я")
+            wall += 1_000
+            val mom = service.create("Мама")
+            val purged = mutableListOf<String>()
+            service.delete(me.id) { purged += it } // удаляется текущий — переключение на оставшийся
+            assertEquals(listOf(me.id), purged)
+            assertEquals(listOf(mom.id), service.accounts().map { it.id })
+            assertEquals(mom.id, service.current().id)
+            assertFailsWith<IllegalArgumentException> { service.delete(mom.id) { purged += it } } // последний — нельзя
+            assertEquals(listOf(me.id), purged) // и данные последнего не тронуты
+        }
+    }
+
+    @Test
     fun invalidInputIsRejected() {
         val (driver, service) = open()
         driver.use {

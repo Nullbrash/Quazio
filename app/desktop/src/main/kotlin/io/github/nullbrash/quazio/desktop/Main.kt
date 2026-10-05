@@ -1,5 +1,6 @@
 package io.github.nullbrash.quazio.desktop
 
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -46,7 +47,12 @@ fun main() = application {
         title = "Quazio",
         state = rememberWindowState(width = 1000.dp, height = 700.dp),
     ) {
-        // Версию передаёт сборка через -Dquazio.version; без неё — запуск мимо Gradle.
-        QuazioApp(versionName = System.getProperty("quazio.version") ?: "dev", openServices = { services })
+        val fileSaver = remember(window) { DesktopFileSaver(window) }
+        QuazioApp(
+            // Версию передаёт сборка через -Dquazio.version; без неё — запуск мимо Gradle.
+            versionName = System.getProperty("quazio.version") ?: "dev",
+            openServices = { services },
+            fileSaver = fileSaver,
+        )
     }
 }

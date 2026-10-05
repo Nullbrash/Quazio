@@ -18,21 +18,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.model.Money
 import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.LocalFileSaver
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.fin_add_account
 import io.github.nullbrash.quazio.core.ui.res.fin_add_txn
@@ -54,6 +59,10 @@ import io.github.nullbrash.quazio.core.ui.res.fin_tags
 import io.github.nullbrash.quazio.core.ui.res.txn_debt
 import io.github.nullbrash.quazio.core.ui.res.fin_empty_month
 import io.github.nullbrash.quazio.core.ui.res.fin_expense
+import io.github.nullbrash.quazio.core.ui.res.fin_export_csv
+import io.github.nullbrash.quazio.core.ui.res.fin_export_done
+import io.github.nullbrash.quazio.core.ui.res.fin_export_failed
+import io.github.nullbrash.quazio.core.ui.res.fin_more
 import io.github.nullbrash.quazio.core.ui.res.fin_in_total
 import io.github.nullbrash.quazio.core.ui.res.fin_income
 import io.github.nullbrash.quazio.core.ui.res.fin_net
@@ -70,8 +79,11 @@ import io.github.nullbrash.quazio.feature.finance.formatMoney
 import io.github.nullbrash.quazio.feature.finance.monthRange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.getString
 
 /** Всё, что показывает раздел за выбранный месяц (грузится в фоне одним заходом). */
 internal data class FinanceData(
@@ -100,6 +112,9 @@ fun FinanceScreen(services: AppServices) {
     var view by remember { mutableStateOf<FinanceView>(FinanceView.Main) }
     var accountDialog by remember { mutableStateOf<FinAccount?>(null) }
     var newAccountDialog by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
+    val fileSaver = LocalFileSaver.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(month, reload) {
         data = withContext(Dispatchers.IO) {
@@ -150,7 +165,32 @@ fun FinanceScreen(services: AppServices) {
                 onNewAccount = { newAccountDialog = true },
                 onCategories = { view = FinanceView.Categories },
                 onTags = { view = FinanceView.Tags },
+                onExport = fileSaver?.let { saver ->
+                    {
+                        scope.launch {
+                            exportMessage = try {
+                                val csv = withContext(Dispatchers.IO) { services.finance.exportCsv(d.accountId) }
+                                val name = "quazio-operations-${localDateTime(nowMillis(), currentZone().id).date}.csv"
+                                if (saver.save(name, csv.encodeToByteArray())) getString(Res.string.fin_export_done) else null
+                            } catch (e: Exception) {
+                                getString(Res.string.fin_export_failed, e.message ?: e.toString())
+                            }
+                        }
+                    }
+                },
             )
+            exportMessage?.let { message ->
+                LaunchedEffect(message) {
+                    delay(4_000)
+                    exportMessage = null
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+                ) { Text(message, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) }
+            }
             ExtendedFloatingActionButton(
                 onClick = { view = FinanceView.Editor(null) },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
@@ -185,6 +225,7 @@ private fun FinanceMain(
     onNewAccount: () -> Unit,
     onCategories: () -> Unit,
     onTags: () -> Unit,
+    onExport: (() -> Unit)?,
 ) {
     val colors = data.categories.associate { it.id to it.color }
     val debtIds = data.accounts.filter { it.type == FinAccountType.DEBT }.mapTo(HashSet()) { it.id }
@@ -197,8 +238,20 @@ private fun FinanceMain(
                 Text(monthTitle(month), style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = { onMonth(month.next()) }) { Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null) }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onTags) { Text(stringResource(Res.string.fin_tags)) }
-                TextButton(onClick = onCategories) { Text(stringResource(Res.string.fin_categories)) }
+                // Три кнопки в шапке не помещаются на телефоне — редкие действия в меню.
+                Box {
+                    var menu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.fin_more))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(Res.string.fin_categories)) }, onClick = { menu = false; onCategories() })
+                        DropdownMenuItem(text = { Text(stringResource(Res.string.fin_tags)) }, onClick = { menu = false; onTags() })
+                        if (onExport != null) {
+                            DropdownMenuItem(text = { Text(stringResource(Res.string.fin_export_csv)) }, onClick = { menu = false; onExport() })
+                        }
+                    }
+                }
             }
         }
         item {

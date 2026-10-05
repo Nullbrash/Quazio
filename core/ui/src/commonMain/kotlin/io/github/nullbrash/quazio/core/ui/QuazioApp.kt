@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -59,7 +60,12 @@ private sealed interface Startup {
  * [openServices] открывает базу — вызывается в фоне, интерфейс тем временем уже рисуется.
  */
 @Composable
-fun QuazioApp(versionName: String, openServices: () -> AppServices, deviceAuth: DeviceAuthenticator? = null) {
+fun QuazioApp(
+    versionName: String,
+    openServices: () -> AppServices,
+    deviceAuth: DeviceAuthenticator? = null,
+    fileSaver: FileSaver? = null,
+) = CompositionLocalProvider(LocalFileSaver provides fileSaver) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
         val startup by produceState<Startup>(Startup.Loading) {
             value = try {

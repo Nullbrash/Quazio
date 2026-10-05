@@ -56,6 +56,25 @@ class AccountService(
         }
     }
 
+    /**
+     * Удалить аккаунт вместе с данными модулей ([purgeData] — в той же транзакции:
+     * не останется ни аккаунта без данных, ни данных без аккаунта). Последний аккаунт
+     * удалить нельзя; если удаляется текущий — переключение на первый оставшийся.
+     */
+    fun delete(accountId: String, purgeData: (String) -> Unit) = db.transaction {
+        val row = requireNotNull(db.accountQueries.byId(accountId).executeAsOneOrNull()) { "Нет аккаунта $accountId" }
+        require(row.deleted == 0L) { "Аккаунт уже удалён" }
+        val others = accounts().filter { it.id != accountId }
+        require(others.isNotEmpty()) { "Нельзя удалить единственный аккаунт" }
+        purgeData(accountId)
+        val hlc = clock.now()
+        db.accountQueries.setDeleted(deleted = 1, hlc = hlc.toString(), id = accountId)
+        changeLog.record(accountId, TABLE, accountId, hlc, mapOf("deleted" to "1"))
+        if (db.appStateQueries.get(KEY_CURRENT_ACCOUNT).executeAsOneOrNull() == accountId) {
+            db.appStateQueries.put(KEY_CURRENT_ACCOUNT, others.first().id)
+        }
+    }
+
     /** Переключение — состояние только этого устройства, в синхронизацию не идёт. */
     fun switchTo(accountId: String) {
         val row = requireNotNull(db.accountQueries.byId(accountId).executeAsOneOrNull()) { "Нет аккаунта $accountId" }

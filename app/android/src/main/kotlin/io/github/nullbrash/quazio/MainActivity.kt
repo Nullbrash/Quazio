@@ -12,11 +12,13 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val deviceAuth = AndroidDeviceAuthenticator(this)
+        val fileSaver = AndroidFileSaver(this)
         setContent {
             QuazioApp(
                 versionName = BuildConfig.VERSION_NAME,
                 openServices = { AppGraph.services(applicationContext) },
                 deviceAuth = deviceAuth,
+                fileSaver = fileSaver,
             )
         }
     }

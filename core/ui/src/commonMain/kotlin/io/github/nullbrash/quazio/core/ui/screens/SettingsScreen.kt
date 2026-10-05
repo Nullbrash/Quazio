@@ -27,7 +27,7 @@ fun SettingsScreen(versionName: String, services: AppServices, deviceAuth: Devic
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        AccountsSection(services.accounts)
+        AccountsSection(services)
         HorizontalDivider()
         SecuritySection(services, deviceAuth)
         HorizontalDivider()

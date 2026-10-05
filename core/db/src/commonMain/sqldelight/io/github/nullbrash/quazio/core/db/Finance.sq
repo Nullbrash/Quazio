@@ -62,6 +62,12 @@ SELECT * FROM merchant WHERE account_id = ? AND normalized = ? AND deleted = 0 L
 merchantById:
 SELECT * FROM merchant WHERE id = ?;
 
+merchantsOf:
+SELECT * FROM merchant WHERE account_id = ? AND deleted = 0;
+
+setMerchantDeleted:
+UPDATE merchant SET deleted = 1, hlc = :hlc WHERE id = :id;
+
 merchantsMatching:
 SELECT * FROM merchant WHERE account_id = :accountId AND deleted = 0 AND normalized LIKE :pattern ESCAPE '\'
 ORDER BY name LIMIT :limit;

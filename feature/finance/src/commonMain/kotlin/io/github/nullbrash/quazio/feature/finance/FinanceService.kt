@@ -350,6 +350,36 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         }
     }
 
+    /** Все операции аккаунта в CSV, от старых к новым. */
+    fun exportCsv(accountId: String): String {
+        val all = transactions(accountId, Long.MIN_VALUE, Long.MAX_VALUE).asReversed()
+        val paths = categories(accountId).associate { it.id to it.path }
+        return TransactionCsv.build(all, paths)
+    }
+
+    /**
+     * Пометить удалёнными все финансовые данные аккаунта (для удаления аккаунта).
+     * Вызывать внутри транзакции удаления аккаунта. Каждая запись — в журнал: другие
+     * устройства узнают об удалении при синхронизации.
+     */
+    fun purgeAccountData(accountId: String) = db.transaction {
+        q.txnsInRange(accountId, Long.MIN_VALUE, Long.MAX_VALUE).executeAsList().forEach { t ->
+            markDeleted(accountId, T_TXN, t.id) { q.setTxnDeleted(it, t.id) }
+        }
+        q.finAccountsWithBalance(accountId).executeAsList().forEach { a ->
+            markDeleted(accountId, T_FIN_ACCOUNT, a.id) { q.setFinAccountDeleted(it, a.id) }
+        }
+        q.categoriesOf(accountId).executeAsList().forEach { c ->
+            markDeleted(accountId, T_CATEGORY, c.id) { q.setCategoryDeleted(it, c.id) }
+        }
+        q.tagsOf(accountId).executeAsList().forEach { tag ->
+            markDeleted(accountId, T_TAG, tag.id) { q.setTagDeleted(it, tag.id) }
+        }
+        q.merchantsOf(accountId).executeAsList().forEach { m ->
+            markDeleted(accountId, T_MERCHANT, m.id) { q.setMerchantDeleted(it, m.id) }
+        }
+    }
+
     fun totals(accountId: String, fromMillis: Long, toMillis: Long): Totals {
         val r = q.totalsInRange(accountId, fromMillis, toMillis).executeAsOne()
         return Totals(Money.rub(r.income_minor), Money.rub(r.expense_minor))

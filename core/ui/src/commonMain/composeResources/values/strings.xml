@@ -17,6 +17,12 @@
     <string name="accounts_name">Имя аккаунта</string>
     <string name="accounts_create">Создать</string>
     <string name="accounts_default_name">Я</string>
+    <string name="accounts_edit">Аккаунт</string>
+    <string name="accounts_save">Сохранить</string>
+    <string name="accounts_delete">Удалить аккаунт</string>
+    <string name="accounts_delete_confirm">Удалить аккаунт «%1$s» и все его данные: счета, операции, категории, метки? Отменить нельзя.</string>
+    <string name="accounts_delete_last">Единственный аккаунт удалить нельзя</string>
+    <string name="action_delete">Удалить</string>
     <string name="action_cancel">Отмена</string>
 
     <string name="lock_title">Раздел защищён</string>
@@ -103,6 +109,10 @@
     <string name="fin_debt_return_to_person">Верну: %1$s</string>
     <string name="fin_debt_return_to_org">Верну %1$s</string>
     <string name="fin_tags">Метки</string>
+    <string name="fin_more">Ещё</string>
+    <string name="fin_export_csv">Выгрузить в CSV</string>
+    <string name="fin_export_done">Файл сохранён</string>
+    <string name="fin_export_failed">Не удалось выгрузить: %1$s</string>
     <string name="tag_name">Название метки</string>
     <string name="tag_delete">Удалить метку</string>
     <string name="tag_delete_confirm">Удалить метку «%1$s»? С операций она исчезнет, сами операции останутся.</string>

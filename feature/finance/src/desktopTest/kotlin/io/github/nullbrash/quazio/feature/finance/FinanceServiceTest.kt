@@ -176,6 +176,37 @@ class FinanceServiceTest {
     }
 
     @Test
+    fun csvIsReadyForRussianExcel() {
+        val coffee = finance.categories(accountId).first { it.name == "Кофе" }.id
+        val person = finance.createTag(accountId, "Катя", TagKind.PERSON)
+        // 05.10.2026 09:11 МСК
+        finance.saveTransaction(accountId, TransactionDraft(kind = TxnKind.EXPENSE, amountMinor = 123_456, finAccountId = cash().id,
+            categoryId = coffee, merchantName = "SPAR", tagIds = setOf(person.id), occurredAt = 1_791_180_660_000L, timeZone = tz,
+            description = "кофе; с собой", note = "сказала \"спасибо\""))
+        val csv = finance.exportCsv(accountId)
+        assertTrue(csv.startsWith("\uFEFF"), "нет метки UTF-8")
+        val lines = csv.removePrefix("\uFEFF").split("\r\n").filter { it.isNotEmpty() }
+        assertEquals(TransactionCsv.HEADER.joinToString(";"), lines[0])
+        assertEquals(
+            "05.10.2026;09:11;Расход;1234,56;RUB;Наличные;;Еда вне дома / Кофе;SPAR;Человек: Катя;\"кофе; с собой\";\"сказала \"\"спасибо\"\"\";Europe/Moscow;",
+            lines[1].substringBeforeLast(';') + ";",
+        )
+    }
+
+    @Test
+    fun purgeRemovesEverythingOfTheAccount() {
+        val card = finance.createAccount(accountId, "Карта", FinAccountType.CARD)
+        finance.createTag(accountId, "Катя", TagKind.PERSON)
+        expense(1_000, card, merchant = "SPAR")
+        finance.purgeAccountData(accountId)
+        assertTrue(finance.accounts(accountId).isEmpty())
+        assertTrue(finance.categories(accountId).isEmpty())
+        assertTrue(finance.tags(accountId).isEmpty())
+        assertTrue(finance.transactions(accountId, Long.MIN_VALUE, Long.MAX_VALUE).isEmpty())
+        assertTrue(finance.merchantSuggestions(accountId, "s").isEmpty())
+    }
+
+    @Test
     fun invalidDraftsAreRejected() {
         assertFailsWith<IllegalArgumentException> { expense(0, cash().id) }
         assertFailsWith<IllegalArgumentException> {
