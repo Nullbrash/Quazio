@@ -67,7 +67,7 @@ class CalendarSettingsUiTest {
         onNodeWithText("Праздники России").performClick() // снять галочку
         // Два отдельных окна (пожелание пользователя): сначала «что показывать» → «Далее».
         onNodeWithText("Далее").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Куда записывать новые события")).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Календарь новых событий")).fetchSemanticsNodes().isNotEmpty() }
         assertFalse(prefs.enabled) // до «Готово» ничего не сохранено
         // Во втором окне только показываемые и доступные для записи: праздников нет.
         assertTrue(onAllNodes(hasText("Праздники России")).fetchSemanticsNodes().isEmpty())
@@ -79,11 +79,11 @@ class CalendarSettingsUiTest {
         assertEquals(mapOf("1" to true, "2" to false, "3" to true), prefs.choices)
         assertEquals("3", prefs.defaultCalendarId)
         onNodeWithText("Показываю календарей: 2 из 3").assertExists()
-        onNodeWithText("Новые события — в: Мой календарь").assertExists()
+        onNodeWithText("Календарь новых событий: Мой календарь").assertExists()
 
         // Потом каждое меняется своей кнопкой: «Выбрать» — только второе окно.
         onNodeWithText("Выбрать").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Куда записывать новые события")).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Календарь новых событий")).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(onAllNodes(hasText("Какие календари показывать")).fetchSemanticsNodes().isEmpty())
         onNodeWithText("Личный").performClick()
         onNodeWithText("Готово").performClick()

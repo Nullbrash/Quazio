@@ -117,12 +117,12 @@
     <string name="cal_turn_off">Выключить</string>
     <string name="cal_denied">Без доступа к календарям Quazio не сможет их показать. Разрешение можно дать в настройках Android.</string>
     <string name="cal_shown_count">Показываю календарей: %1$d из %2$d</string>
-    <string name="cal_new_events_in">Новые события — в: %1$s</string>
+    <string name="cal_new_events_in">Календарь новых событий: %1$s</string>
     <string name="cal_no_writable">нет календаря, в который можно писать</string>
     <string name="cal_setup_title">Какие календари показывать</string>
     <string name="cal_setup_hint">Отмечены те, что видны в календаре телефона. Список можно поменять в любой момент.</string>
     <string name="cal_read_only">только просмотр</string>
-    <string name="cal_default_for_new">Куда записывать новые события</string>
+    <string name="cal_default_for_new">Календарь новых событий</string>
     <string name="cal_done">Готово</string>
     <string name="cal_next">Далее</string>
     <string name="cal_choose">Выбрать</string>
