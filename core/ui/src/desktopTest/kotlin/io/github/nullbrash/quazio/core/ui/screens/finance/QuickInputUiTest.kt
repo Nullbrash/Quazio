@@ -3,9 +3,11 @@ package io.github.nullbrash.quazio.core.ui.screens.finance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.github.nullbrash.quazio.core.accounts.AccountService
@@ -67,10 +69,11 @@ class QuickInputUiTest {
 
     @Test
     fun postShowsDraftListAndSavesAll() = runComposeUiTest {
-        val piggy = finance.createAccount(accountId, "Копилка", FinAccountType.SAVINGS, openingBalanceMinor = 5_000_000)
+        // «Забрал» — у того, у кого лежат мои деньги: долг, мне должны 50 000 ₽.
+        val mom = finance.createAccount(accountId, "Мама", FinAccountType.DEBT, openingBalanceMinor = 5_000_000)
         setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
         // Текст пришёл, когда экран уже открыт (второе «В учёт Quazio»).
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Копилка", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Мама", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         incoming.offer("Забрал:\n14.07: - 2 000р.\n18.07: - 500р.\n\n= - 2 500р.\n\nОстаток: 47 500р.")
         waitUntil("текст принят экраном", timeoutMillis = 10_000) { incoming.text.value == null }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Сохранить (2)")).fetchSemanticsNodes().isNotEmpty() }
@@ -79,13 +82,14 @@ class QuickInputUiTest {
         onNodeWithText("Сохранить (2)").performClick()
         waitUntil(timeoutMillis = 10_000) { all().size == 2 }
 
-        assertTrue(all().all { it.kind == TxnKind.TRANSFER && it.finAccountId == piggy })
-        assertEquals(4_750_000, finance.accounts(accountId).first { it.id == piggy }.balance.minor)
+        // Долг «мне вернули» хранится переводом с долга на свой счёт.
+        assertTrue(all().all { it.kind == TxnKind.TRANSFER && it.finAccountId == mom })
+        assertEquals(4_750_000, finance.accounts(accountId).first { it.id == mom }.balance.minor)
     }
 
     @Test
-    fun postWithoutSavingsAccountCreatesItAndFixesBalance() = runComposeUiTest {
-        // Пост в стиле пользователя (суммы изменены); копилки в Quazio ещё нет.
+    fun postWithoutDebtCreatesItAndFixesBalance() = runComposeUiTest {
+        // Пост в стиле пользователя (суммы изменены); долга, у кого лежат деньги, в Quazio ещё нет.
         incoming.offer("Забрал 1 200р.\n- 1 200р.\n\nЗа 1-4-ое по 500р не брал\n+ 2 000р.\n\n= + 800р.\n\nОстаток: 61 000р.")
         setContent { CompositionLocalProvider(LocalIncomingText provides incoming) { MaterialTheme { FinanceScreen(services) } } }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Нашлось в тексте", substring = true)).fetchSemanticsNodes().isNotEmpty() }
@@ -94,16 +98,19 @@ class QuickInputUiTest {
         onNodeWithText("совпадает со строками выше", substring = true).assertExists()
         onNodeWithText("на каком счёте", substring = true).assertExists()
 
-        // «Откуда» не выбран — сохранить нельзя; выбираем, создав «Накопления» прямо из карточки.
-        onAllNodes(hasText("выбрать счёт"))[0].performClick()
-        onNodeWithText("+ Создать счёт «Накопления»").performClick()
+        // Долг не выбран — сохранить нельзя; создаём его прямо из карточки.
+        onNodeWithText("выбрать долг").performClick()
+        onNodeWithText("+ Новый долг…").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+        onNode(hasSetTextAction()).performTextInput("Мама")
+        onNodeWithText("Сохранить").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Поправить баланс", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText("Поправить баланс", substring = true).performClick()
         onNodeWithText("Сохранить (1)").performClick()
-        waitUntil(timeoutMillis = 10_000) { all().size == 2 } // перевод + поправка баланса
+        waitUntil(timeoutMillis = 10_000) { all().size == 2 } // долг + поправка баланса
 
         val byName = finance.accounts(accountId).associateBy { it.name }
-        assertEquals(6_100_000, byName.getValue("Накопления").balance.minor)
+        assertEquals(6_100_000, byName.getValue("Мама").balance.minor) // ровно «Остаток» из поста
         assertEquals(120_000, byName.getValue("Наличные").balance.minor)
     }
 
@@ -123,6 +130,8 @@ class QuickInputUiTest {
         val made = all().single { it.kind == TxnKind.INCOME }
         assertEquals(200_000, made.amount.minor)
         assertEquals("За 1-4-ое по 500р не брал", made.description)
+        // Решение запомнено: в следующий раз «не брал» сразу станет такой же операцией.
+        assertEquals(io.github.nullbrash.quazio.engine.quickinput.QuickKind.INCOME, finance.quickVocabulary(accountId).wordRules["не брал"]?.kind)
     }
 
     @Test

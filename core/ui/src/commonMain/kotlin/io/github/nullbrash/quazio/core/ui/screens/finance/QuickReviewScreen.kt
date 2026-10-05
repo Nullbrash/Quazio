@@ -56,6 +56,8 @@ import io.github.nullbrash.quazio.core.ui.res.quick_found
 import io.github.nullbrash.quazio.core.ui.res.quick_make_op
 import io.github.nullbrash.quazio.core.ui.res.quick_ops
 import io.github.nullbrash.quazio.core.ui.res.quick_pick_account
+import io.github.nullbrash.quazio.core.ui.res.quick_pick_debt
+import io.github.nullbrash.quazio.core.ui.res.quick_create_debt
 import io.github.nullbrash.quazio.core.ui.res.quick_save
 import io.github.nullbrash.quazio.core.ui.res.quick_savings_name
 import io.github.nullbrash.quazio.core.ui.res.quick_skip_date
@@ -73,6 +75,7 @@ import io.github.nullbrash.quazio.engine.quickinput.QuickLine
 import io.github.nullbrash.quazio.engine.quickinput.SkipReason
 import io.github.nullbrash.quazio.feature.finance.FinAccount
 import io.github.nullbrash.quazio.feature.finance.FinAccountType
+import io.github.nullbrash.quazio.feature.finance.TagKind
 import io.github.nullbrash.quazio.feature.finance.TxnKind
 import io.github.nullbrash.quazio.feature.finance.formatMoney
 import kotlinx.coroutines.Dispatchers
@@ -81,14 +84,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
-/** Создать счёт «Накопления» и передать его id. */
-private typealias CreateSavings = (onCreated: (String) -> Unit) -> Unit
+/** Создать счёт (накопления, новый долг) и передать его id. */
+private typealias CreateAccount = (onCreated: (String) -> Unit) -> Unit
 
-private class ReviewOp(val original: QuickDraft, prefill: EditorPrefill) {
+/** [manual] — сделана из пропущенной строки: при сохранении запоминается всё решение. */
+private class ReviewOp(val original: QuickDraft, prefill: EditorPrefill, val manual: Boolean = false) {
     var prefill by mutableStateOf(prefill)
     var include by mutableStateOf(true)
 }
@@ -129,7 +134,9 @@ internal fun QuickReviewScreen(
     val debts = accounts.filter { it.type == FinAccountType.DEBT }
     val categoryPath = data.categories.associate { it.id to it.path }
     val savingsName = stringResource(Res.string.quick_savings_name)
-    val createSavings: CreateSavings? = if (accounts.any { it.type == FinAccountType.SAVINGS }) null else { onCreated ->
+    var newDebtFor by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    val createDebt: CreateAccount = { onCreated -> newDebtFor = onCreated }
+    val createSavings: CreateAccount? = if (accounts.any { it.type == FinAccountType.SAVINGS }) null else { onCreated ->
         scope.launch {
             val (id, list) = withContext(Dispatchers.IO) {
                 val id = services.finance.createAccount(data.accountId, savingsName, FinAccountType.SAVINGS)
@@ -162,8 +169,8 @@ internal fun QuickReviewScreen(
             onDraft = { draft ->
                 val p = draft.toPrefill(::isDebt)
                 if (existing != null) existing.prefill = p
-                // Сделано вручную, не разбором: запоминать для слова нечего (keyWord = null).
-                else ops[index] = ReviewOp(QuickDraft(QuickKind.EXPENSE, 1, now.date), p)
+                // Решение пользователя по строке «не брал» запоминается под её словом.
+                else ops[index] = ReviewOp(QuickDraft(QuickKind.EXPENSE, 1, now.date, keyWord = (lines[index] as QuickLine.Skipped).keyWord), p, manual = true)
                 editing = null
             },
             onClose = { editing = null },
@@ -171,12 +178,35 @@ internal fun QuickReviewScreen(
         return
     }
 
+    newDebtFor?.let { onCreated ->
+        NewDebtDialog(
+            counterparties = data.tags.filter { it.kind == TagKind.PERSON || it.kind == TagKind.ORGANIZATION },
+            onDismiss = { newDebtFor = null },
+            onCreate = { name, tagKind ->
+                newDebtFor = null
+                scope.launch {
+                    val (id, list) = withContext(Dispatchers.IO) {
+                        val tag = services.finance.createTag(data.accountId, name, tagKind)
+                        val id = services.finance.createAccount(data.accountId, tag.name, FinAccountType.DEBT, personTagId = tag.id)
+                        id to services.finance.accounts(data.accountId).filter { !it.archived }
+                    }
+                    accounts = list
+                    accountCreated = true
+                    onCreated(id)
+                }
+            },
+        )
+    }
+
     val checked = ops.map { op -> op?.takeIf { it.include }?.prefill?.check(null, zone, ::isDebt) }
     val valid = checked.mapNotNull { (it as? DraftCheck.Ok)?.draft }
     val count = checked.count { it != null }
     /** О каком счёте «Остаток»: выбран здесь, понят из текста или счёт последней операции выше. */
     fun accountOfBalance(i: Int, line: QuickLine.Balance): String? = balanceAccount[i] ?: line.accountId
-        ?: (i - 1 downTo 0).firstNotNullOfOrNull { ops[it]?.prefill?.finAccountId }
+        ?: (i - 1 downTo 0).firstNotNullOfOrNull { j ->
+            // У долга «Остаток» — сколько ещё у человека, то есть сам долг.
+            ops[j]?.prefill?.let { if (it.kind == EditorKind.DEBT) it.secondAccountId else it.finAccountId }
+        }
     fun predicted(accountId: String): Long {
         val now = accounts.firstOrNull { it.id == accountId }?.balance?.minor ?: 0
         return now + valid.sumOf { d ->
@@ -203,7 +233,7 @@ internal fun QuickReviewScreen(
                             runCatching {
                                 ops.forEachIndexed { i, op ->
                                     val draft = (checked[i] as? DraftCheck.Ok)?.draft ?: return@forEachIndexed
-                                    saveQuickDraft(services, current, op!!.original, draft)
+                                    saveQuickDraft(services, current, op!!.original, draft, rememberAll = op.manual)
                                 }
                                 lines.forEachIndexed { i, line ->
                                     if (line !is QuickLine.Balance || adjust[i] != true) return@forEachIndexed
@@ -229,7 +259,7 @@ internal fun QuickReviewScreen(
                     op != null -> {
                         OperationCard(
                             source = line.text, prefill = op.prefill, include = op.include,
-                            own = own, debts = debts, categoryPath = categoryPath, createSavings = createSavings,
+                            own = own, debts = debts, categoryPath = categoryPath, createSavings = createSavings, createDebt = createDebt,
                             onInclude = { op.include = it },
                             onChange = { op.prefill = it },
                             onEdit = { editing = i },
@@ -249,7 +279,7 @@ internal fun QuickReviewScreen(
                         val account = accountOfBalance(i, line)
                         BalanceCard(
                             amount = line.amountMinor, account = accounts.firstOrNull { it.id == account },
-                            predicted = account?.let { predicted(it) }, own = own, createSavings = createSavings,
+                            predicted = account?.let { predicted(it) }, options = accounts, createSavings = createSavings,
                             adjust = adjust[i] == true, onAdjust = { adjust[i] = it }, onAccount = { balanceAccount[i] = it },
                         )
                     }
@@ -287,7 +317,8 @@ private fun OperationCard(
     own: List<FinAccount>,
     debts: List<FinAccount>,
     categoryPath: Map<String, String>,
-    createSavings: CreateSavings?,
+    createSavings: CreateAccount?,
+    createDebt: CreateAccount,
     onInclude: (Boolean) -> Unit,
     onChange: (EditorPrefill) -> Unit,
     onEdit: () -> Unit,
@@ -304,19 +335,19 @@ private fun OperationCard(
                 when (prefill.kind) {
                     EditorKind.TRANSFER -> {
                         Word(stringResource(Res.string.quick_word_from))
-                        AccountChip(prefill.finAccountId, own.filter { it.id != prefill.secondAccountId }, createSavings, pickFirst)
+                        AccountChip(prefill.finAccountId, own.filter { it.id != prefill.secondAccountId }, pickFirst, createSavings = createSavings)
                         Word(stringResource(Res.string.quick_word_to))
-                        AccountChip(prefill.secondAccountId, own.filter { it.id != prefill.finAccountId }, null, pickSecond)
+                        AccountChip(prefill.secondAccountId, own.filter { it.id != prefill.finAccountId }, pickSecond)
                     }
                     EditorKind.DEBT -> {
-                        Word(stringResource(Res.string.quick_word_account))
-                        AccountChip(prefill.finAccountId, own, null, pickFirst)
                         Word(stringResource(Res.string.quick_word_debt))
-                        AccountChip(prefill.secondAccountId, debts, null, pickSecond)
+                        AccountChip(prefill.secondAccountId, debts, pickSecond, createDebt = createDebt, placeholder = Res.string.quick_pick_debt)
+                        Word(stringResource(Res.string.quick_word_account))
+                        AccountChip(prefill.finAccountId, own, pickFirst)
                     }
                     else -> {
                         Word(stringResource(Res.string.quick_word_account))
-                        AccountChip(prefill.finAccountId, own, createSavings, pickFirst)
+                        AccountChip(prefill.finAccountId, own, pickFirst, createSavings = createSavings)
                         if (prefill.kind == EditorKind.EXPENSE || prefill.kind == EditorKind.INCOME) {
                             Word("· " + (prefill.categoryId?.let { categoryPath[it] } ?: stringResource(Res.string.fin_no_category)))
                         }
@@ -335,15 +366,22 @@ private fun Word(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 14.dp))
 }
 
-/** Счёт прямо в карточке: не выбран — красным «выбрать счёт»; в списке может быть «+ Создать „Накопления“». */
+/** Счёт прямо в карточке: не выбран — красным «выбрать счёт»; в списке — «+ Накопления» / «+ Новый долг». */
 @Composable
-private fun AccountChip(selected: String?, options: List<FinAccount>, createSavings: CreateSavings?, onPick: (String) -> Unit) {
+private fun AccountChip(
+    selected: String?,
+    options: List<FinAccount>,
+    onPick: (String) -> Unit,
+    createSavings: CreateAccount? = null,
+    createDebt: CreateAccount? = null,
+    placeholder: StringResource = Res.string.quick_pick_account,
+) {
     var open by remember { mutableStateOf(false) }
     val name = options.firstOrNull { it.id == selected }?.name
     Box {
         AssistChip(
             onClick = { open = true },
-            label = { Text(name ?: stringResource(Res.string.quick_pick_account)) },
+            label = { Text(name ?: stringResource(placeholder)) },
             trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
             colors = if (name == null) AssistChipDefaults.assistChipColors(labelColor = MaterialTheme.colorScheme.error) else AssistChipDefaults.assistChipColors(),
         )
@@ -357,6 +395,12 @@ private fun AccountChip(selected: String?, options: List<FinAccount>, createSavi
                     onClick = { open = false; createSavings(onPick) },
                 )
             }
+            if (createDebt != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.quick_create_debt)) },
+                    onClick = { open = false; createDebt(onPick) },
+                )
+            }
         }
     }
 }
@@ -366,8 +410,8 @@ private fun BalanceCard(
     amount: Long,
     account: FinAccount?,
     predicted: Long?,
-    own: List<FinAccount>,
-    createSavings: CreateSavings?,
+    options: List<FinAccount>,
+    createSavings: CreateAccount?,
     adjust: Boolean,
     onAdjust: (Boolean) -> Unit,
     onAccount: (String) -> Unit,
@@ -375,7 +419,7 @@ private fun BalanceCard(
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.quick_balance_ask, formatMoney(Money.rub(amount))), modifier = Modifier.weight(1f, fill = false))
-            AccountChip(account?.id, own, createSavings, onAccount)
+            AccountChip(account?.id, options, onAccount, createSavings = createSavings)
         }
         if (account == null || predicted == null) return@Column
         Text(stringResource(Res.string.quick_balance_will, account.name, formatMoney(Money.rub(predicted))), style = MaterialTheme.typography.bodyMedium)

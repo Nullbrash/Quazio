@@ -13,6 +13,8 @@ import io.github.nullbrash.quazio.feature.finance.TransactionDraft
 import io.github.nullbrash.quazio.feature.finance.TxnKind
 import io.github.nullbrash.quazio.feature.finance.TxnSource
 import io.github.nullbrash.quazio.feature.finance.quickCorrection
+import io.github.nullbrash.quazio.feature.finance.quickMeaning
+import io.github.nullbrash.quazio.engine.quickinput.WordRule
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
@@ -118,10 +120,16 @@ internal fun QuickDraft.toPrefill(tagIds: Set<String>, zone: TimeZone): EditorPr
     )
 }
 
-/** Сохранить черновик быстрого ввода и запомнить, что пользователь в нём поправил. */
-internal fun saveQuickDraft(services: AppServices, data: FinanceData, original: QuickDraft, draft: TransactionDraft) {
+/**
+ * Сохранить черновик быстрого ввода и запомнить, что пользователь в нём поправил.
+ * [rememberAll] — операцию сделали из пропущенной строки («не брал»): запоминается всё решение.
+ */
+internal fun saveQuickDraft(services: AppServices, data: FinanceData, original: QuickDraft, draft: TransactionDraft, rememberAll: Boolean = false) {
     val finance = services.finance
     finance.saveTransaction(data.accountId, draft.copy(source = TxnSource.QUICK_INPUT))
+    val word = original.keyWord ?: return
     val isDebt = { id: String -> data.accounts.any { it.id == id && it.type == FinAccountType.DEBT } }
-    quickCorrection(original, draft, isDebt)?.let { finance.rememberQuickWord(data.accountId, original.keyWord!!, it) }
+    val rule = if (rememberAll) draft.quickMeaning(isDebt)?.let { WordRule(it.kind, it.categoryId, it.accountId, it.secondAccountId) }
+    else quickCorrection(original, draft, isDebt)
+    rule?.let { finance.rememberQuickWord(data.accountId, word, it) }
 }

@@ -90,6 +90,8 @@ sealed interface QuickLine {
         override val text: String,
         val signedMinor: Long? = null,
         val reason: SkipReason = SkipReason.UNKNOWN,
+        /** «не брал» — под этим словом запоминается, если строку сделали операцией. */
+        val keyWord: String? = null,
     ) : QuickLine
 }
 

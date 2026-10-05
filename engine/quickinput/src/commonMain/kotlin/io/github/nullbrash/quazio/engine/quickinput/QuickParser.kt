@@ -109,9 +109,21 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
     private fun full(lx: Lexed, amount: Long) {
         val it = interpreter.interpret(lx)
         if (it.negated) {
-            // «За 5-ое по 500р не брал» — не операция, но в сверке участвует (недобранное — в плюс).
+            // «За 5-ое по 500р не брал» — в сверке участвует (недобранное — в плюс). Операцией
+            // становится, только если пользователь так решил раньше (память «не брал»).
             val signed = amount * (lx.sign ?: 1)
-            skip(lx.text, signed, SkipReason.NEGATED)
+            val rule = it.negatedKey?.let { k -> vocab.wordRules[k] }
+            if (rule?.kind != null) {
+                val draft = QuickDraft(
+                    kind = rule.kind, amountMinor = amount, date = lx.date ?: it.date ?: contextDate ?: today, time = lx.time,
+                    accountId = rule.accountId ?: vocab.defaultAccountId, secondAccountId = rule.secondAccountId,
+                    categoryId = rule.categoryId, description = lx.text.trim().trimEnd('.'), keyWord = it.negatedKey,
+                )
+                out += QuickLine.Operation(lx.text, draft, signed)
+                focusAccount = focusOf(draft) ?: focusAccount
+            } else {
+                out += QuickLine.Skipped(lx.text, signed, SkipReason.NEGATED, it.negatedKey)
+            }
             running += signed
             restatable = out.lastIndex
             return
@@ -129,7 +141,13 @@ private class Block(private val vocab: QuickVocabulary, private val today: Local
         val signed = sign?.let { s -> s * amount } ?: defaultSigned(it.kind, amount)
         out += QuickLine.Operation(text, draft, signed)
         running += signed
-        focusAccount = it.accountId ?: focusAccount
+        focusAccount = focusOf(draft) ?: focusAccount
+    }
+
+    /** О каком счёте пост: у долга — сам долг («Остаток» — сколько ещё у человека), иначе свой счёт. */
+    private fun focusOf(d: QuickDraft) = when (d.kind) {
+        QuickKind.DEBT_IN, QuickKind.DEBT_OUT -> d.secondAccountId
+        else -> d.accountId
     }
 
     /** Следующая строка повторила сумму предыдущей: уточняет знак и сумму, отдельной операцией не становится. */

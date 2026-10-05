@@ -157,20 +157,33 @@ class QuickParserTest {
             assertEquals("cash", it.secondAccountId)
             assertEquals("", it.description)
         }
-        // «Забрал» — с накоплений на основной счёт.
+    }
+
+    @Test
+    fun takenMoneyIsADebtReturnedToMe() {
+        // «Забрал» — буквально забрал себе у кого-то (решение пользователя): долг, деньги ко мне.
         one("Забрал 1 500р.").let {
-            assertEquals(QuickKind.TRANSFER, it.kind)
-            assertEquals("savings", it.accountId)
-            assertEquals("card", it.secondAccountId)
+            assertEquals(QuickKind.DEBT_IN, it.kind)
+            assertEquals("debt-katya", it.secondAccountId) // долг один — он и есть
+            assertEquals("card", it.accountId)
             assertEquals("забрал", it.keyWord)
+            assertEquals("", it.description)
         }
-        assertEquals("cash", one("забрал 1000 на наличные").secondAccountId)
-        // Накоплений нет — «откуда» остаётся пустым, выберет пользователь.
-        val noSavings = QuickVocabulary(accounts = listOf(card, cash), categories = categories)
-        one("забрал 1000", noSavings).let {
-            assertEquals(QuickKind.TRANSFER, it.kind)
-            assertNull(it.accountId)
-            assertEquals("card", it.secondAccountId)
+        assertEquals("cash", one("забрал 1000 наличными").accountId)
+        assertEquals("debt-katya", one("забрал у кати 700").secondAccountId)
+        val twoDebts = QuickVocabulary(
+            accounts = vocab.accounts + QuickAccount("debt-mom", "Мама", AccountRole.DEBT, counterparty = "Мама"),
+            categories = categories,
+        )
+        // Долгов несколько и не сказано у кого — выберет пользователь.
+        assertNull(one("забрал 1000", twoDebts).secondAccountId)
+        assertEquals("debt-mom", one("забрал у мамы 1000", twoDebts).secondAccountId)
+        // Долгов нет — «у кого» пустое.
+        val noDebts = QuickVocabulary(accounts = listOf(card, cash), categories = categories)
+        one("забрал 1000", noDebts).let {
+            assertEquals(QuickKind.DEBT_IN, it.kind)
+            assertNull(it.secondAccountId)
+            assertEquals("card", it.accountId)
         }
     }
 
@@ -241,20 +254,22 @@ class QuickParserTest {
         )
         assertEquals(4, lines.size, "$lines")
         val op = assertIs<QuickLine.Operation>(lines[0])
-        assertEquals(QuickKind.TRANSFER, op.draft.kind)
+        assertEquals(QuickKind.DEBT_IN, op.draft.kind)
         assertEquals(rub(2000), op.draft.amountMinor)
-        assertEquals("savings", op.draft.accountId)
+        assertEquals("debt-katya", op.draft.secondAccountId)
         assertEquals(-rub(2000), op.signedMinor)
         assertEquals("Забрал 2 000р.\n- 2 000р", op.text)
         val norm = assertIs<QuickLine.Skipped>(lines[1])
         assertEquals(rub(500), norm.signedMinor)
         assertEquals(SkipReason.NEGATED, norm.reason)
+        assertEquals("не брал", norm.keyWord)
         val total = assertIs<QuickLine.Total>(lines[2])
         assertEquals(-rub(1500), total.expectedMinor)
         assertTrue(total.matches, "$total")
         val balance = assertIs<QuickLine.Balance>(lines[3])
         assertEquals(rub(61_000), balance.amountMinor)
-        assertEquals("savings", balance.accountId)
+        // Остаток — сколько ещё у того, у кого забираю.
+        assertEquals("debt-katya", balance.accountId)
     }
 
     @Test
@@ -302,11 +317,28 @@ class QuickParserTest {
         val drafts = lines.filterIsInstance<QuickLine.Operation>().map { it.draft }
         assertEquals(listOf(rub(2000), rub(500), rub(700)), drafts.map { it.amountMinor })
         assertEquals(listOf(LocalDate(2026, 7, 14), LocalDate(2026, 7, 18), LocalDate(2026, 7, 21)), drafts.map { it.date })
-        assertTrue(drafts.all { it.kind == QuickKind.TRANSFER && it.accountId == "savings" })
+        assertTrue(drafts.all { it.kind == QuickKind.DEBT_IN && it.secondAccountId == "debt-katya" })
         val totals = lines.filterIsInstance<QuickLine.Total>()
         assertEquals(2, totals.size)
         assertTrue(totals.all { it.matches }, "$totals")
-        assertEquals("savings", lines.filterIsInstance<QuickLine.Balance>().single().accountId)
+        assertEquals("debt-katya", lines.filterIsInstance<QuickLine.Balance>().single().accountId)
+    }
+
+    @Test
+    fun rememberedDecisionTurnsNormLineIntoOperation() {
+        // Пользователь раньше сделал строку «не брал» доходом на копилку — теперь так сразу.
+        val learned = QuickVocabulary(
+            accounts = vocab.accounts, categories = categories,
+            wordRules = mapOf("не брал" to WordRule(kind = QuickKind.INCOME, accountId = "savings")),
+        )
+        val lines = QuickParser.parse("За 1-4-ое по 500р не брал\n+ 2 000р.\n\n= + 2 000р.", learned, today)
+        val op = assertIs<QuickLine.Operation>(lines[0])
+        assertEquals(QuickKind.INCOME, op.draft.kind)
+        assertEquals(rub(2000), op.draft.amountMinor)
+        assertEquals("savings", op.draft.accountId)
+        assertEquals("не брал", op.draft.keyWord)
+        assertEquals("За 1-4-ое по 500р не брал", op.draft.description)
+        assertTrue(assertIs<QuickLine.Total>(lines[1]).matches)
     }
 
     @Test

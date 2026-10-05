@@ -20,6 +20,8 @@ internal class Interpretation(
     val date: LocalDate?,
     /** Счёт назван в тексте («на карте», «наличными»), а не взят по умолчанию. */
     val accountNamed: Boolean,
+    /** «не брал» — слово памяти для строк с отрицанием. */
+    val negatedKey: String?,
 )
 
 internal class Interpreter(private val vocab: QuickVocabulary, private val today: LocalDate) {
@@ -32,7 +34,8 @@ internal class Interpreter(private val vocab: QuickVocabulary, private val today
         val n = t.map { it.norm }
         fun has(word: String) = word in n
 
-        val negated = n.indices.any { n[it] == "не" && n.getOrNull(it + 1) in Lexicon.negatedVerbs }
+        val negIdx = n.indices.firstOrNull { n[it] == "не" && n.getOrNull(it + 1) in Lexicon.negatedVerbs }
+        val negated = negIdx != null
 
         // Дата словами.
         var date = lexed.date
@@ -115,11 +118,16 @@ internal class Interpreter(private val vocab: QuickVocabulary, private val today
                     second = toAcc
                 }
                 withdrawIdx >= 0 -> {
+                    // Забрал себе у кого-то: «у кати» — у кого; не сказано — единственный долг.
                     t[withdrawIdx].used = true
-                    kind = QuickKind.TRANSFER
+                    kind = QuickKind.DEBT_IN
                     hasAction = true
-                    account = fromAcc ?: ownAccounts.singleOrNull { it.role == AccountRole.SAVINGS }?.id
-                    second = toAcc ?: plainAcc
+                    t.filter { it.norm in Lexicon.particles }.forEach { it.used = true }
+                    val person = t.filter { isNameLike(it) }
+                    val debt = if (person.isEmpty()) debtAccounts.singleOrNull()
+                    else person.firstNotNullOfOrNull { p -> debtAccounts.firstOrNull { matchesDebt(it, p.norm) }?.also { p.used = true } }
+                    second = debt?.id
+                    account = toAcc ?: plainAcc
                 }
             }
         }
@@ -177,12 +185,8 @@ internal class Interpreter(private val vocab: QuickVocabulary, private val today
         }
 
         if (kind == QuickKind.TRANSFER && second == account) second = null
-        if (kind == QuickKind.TRANSFER && account == null && !hasWithdraw(n)) account = vocab.defaultAccountId?.takeIf { it != second }
+        if (kind == QuickKind.TRANSFER && account == null) account = vocab.defaultAccountId?.takeIf { it != second }
         if (account == null && kind != QuickKind.TRANSFER) account = vocab.defaultAccountId
-        if (kind == QuickKind.TRANSFER && second == null && hasAction && account != vocab.defaultAccountId) {
-            // «Забрал» без «куда» — на основной счёт.
-            second = vocab.defaultAccountId?.takeIf { it != account }
-        }
         if (kind == QuickKind.TRANSFER || kind == QuickKind.DEBT_IN || kind == QuickKind.DEBT_OUT) {
             t.filter { it.norm in Lexicon.particles }.forEach { it.used = true }
         }
@@ -199,10 +203,9 @@ internal class Interpreter(private val vocab: QuickVocabulary, private val today
             accountId = account, secondAccountId = second, categoryId = categoryId,
             merchant = merchant, description = description, tags = tags, keyWord = keyWord, date = date,
             accountNamed = fromAcc != null || toAcc != null || plainAcc != null,
+            negatedKey = negIdx?.let { "не " + n[it + 1] },
         )
     }
-
-    private fun hasWithdraw(n: List<String>) = n.any { it in Lexicon.withdrawWords }
 
     private fun recentWeekday(target: Int): LocalDate {
         val back = (today.dayOfWeek.ordinal - target + 7) % 7
