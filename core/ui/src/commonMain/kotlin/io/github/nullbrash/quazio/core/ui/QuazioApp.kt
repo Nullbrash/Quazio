@@ -36,7 +36,7 @@ import io.github.nullbrash.quazio.core.ui.res.error_open_data
 import io.github.nullbrash.quazio.core.ui.res.loading
 import io.github.nullbrash.quazio.core.ui.res.nav_finance
 import io.github.nullbrash.quazio.core.ui.res.nav_settings
-import io.github.nullbrash.quazio.core.ui.screens.FinanceScreen
+import io.github.nullbrash.quazio.core.ui.screens.finance.FinanceScreen
 import io.github.nullbrash.quazio.core.ui.screens.LockGate
 import io.github.nullbrash.quazio.core.ui.screens.SettingsScreen
 import androidx.lifecycle.Lifecycle
@@ -143,7 +143,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
 private fun DestinationContent(destination: Destination, versionName: String, services: AppServices, deviceAuth: DeviceAuthenticator?) {
     val screen: @Composable () -> Unit = {
         when (destination) {
-            Destination.FINANCE -> FinanceScreen(services.accounts)
+            Destination.FINANCE -> FinanceScreen(services)
             Destination.SETTINGS -> SettingsScreen(versionName, services, deviceAuth)
         }
     }

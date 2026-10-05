@@ -109,6 +109,9 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
         markDeleted(old.account_id, T_FIN_ACCOUNT, id) { q.setFinAccountDeleted(it, id) }
     }
 
+    fun openingBalance(finAccountId: String): Long =
+        requireNotNull(q.finAccountById(finAccountId).executeAsOneOrNull()) { "Нет счёта $finAccountId" }.opening_balance_minor
+
     fun hasTransactions(finAccountId: String): Boolean =
         q.anyTxnOfFinAccount(finAccountId).executeAsOneOrNull() != null
 

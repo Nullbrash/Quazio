@@ -8,9 +8,6 @@
     <string name="loading">Загрузка…</string>
     <string name="error_open_data">Не удалось открыть данные: %1$s</string>
 
-    <string name="finance_placeholder">Здесь будет учёт финансов</string>
-    <string name="finance_account">Аккаунт: %1$s</string>
-
     <string name="settings_about">О программе</string>
     <string name="settings_version">Версия %1$s</string>
     <string name="settings_license">Свободная программа, лицензия Apache-2.0</string>
@@ -42,6 +39,78 @@
     <string name="lock_copy">Копировать</string>
     <string name="lock_copied">Скопировано</string>
     <string name="lock_back">Назад</string>
+
+    <string name="fin_income">Доходы</string>
+    <string name="fin_expense">Расходы</string>
+    <string name="fin_net">Итог</string>
+    <string name="fin_in_total">В итоге: %1$s</string>
+    <string name="fin_add_account">Счёт</string>
+    <string name="fin_add_txn">Добавить операцию</string>
+    <string name="fin_empty_month">В этом месяце операций нет</string>
+    <string name="fin_categories">Категории</string>
+    <string name="fin_no_category">Без категории</string>
+    <string name="fin_archived">в архиве</string>
+
+    <string name="txn_expense">Расход</string>
+    <string name="txn_income">Доход</string>
+    <string name="txn_transfer">Перевод</string>
+    <string name="txn_adjustment">Корректировка</string>
+    <string name="txn_new">Новая операция</string>
+    <string name="txn_edit">Операция</string>
+    <string name="txn_amount">Сумма</string>
+    <string name="txn_amount_adjustment">Сумма (минус — уменьшить баланс)</string>
+    <string name="txn_account">Счёт</string>
+    <string name="txn_to_account">На счёт</string>
+    <string name="txn_category">Категория</string>
+    <string name="txn_choose">Выбрать</string>
+    <string name="txn_merchant">Магазин / получатель</string>
+    <string name="txn_description">Описание</string>
+    <string name="txn_tags">Метки</string>
+    <string name="txn_add_tag">Добавить метку</string>
+    <string name="txn_date">Дата</string>
+    <string name="txn_time">Время</string>
+    <string name="txn_note">Заметка</string>
+    <string name="txn_save">Сохранить</string>
+    <string name="txn_delete">Удалить</string>
+    <string name="txn_delete_confirm">Удалить операцию?</string>
+    <string name="txn_bad_amount">Введите сумму, например 450 или 1 234,56</string>
+    <string name="txn_need_account">Выберите счёт</string>
+    <string name="txn_need_to_account">Выберите другой счёт зачисления</string>
+
+    <string name="tag_topic">Тема</string>
+    <string name="tag_person">Человек</string>
+    <string name="tag_organization">Организация</string>
+    <string name="tag_search">Найти или создать метку</string>
+    <string name="tag_create">Создать «%1$s»</string>
+
+    <string name="acc_new">Новый счёт</string>
+    <string name="acc_edit">Счёт</string>
+    <string name="acc_name">Название</string>
+    <string name="acc_type">Тип</string>
+    <string name="acc_opening">Начальный остаток</string>
+    <string name="acc_credit_limit">Кредитный лимит</string>
+    <string name="acc_person">С кем долг</string>
+    <string name="acc_in_total">Учитывать в итоге</string>
+    <string name="acc_archived">В архиве</string>
+    <string name="acc_delete">Удалить счёт</string>
+    <string name="acc_has_txns">У счёта есть операции — его можно только убрать в архив</string>
+    <string name="acc_type_card">Карта</string>
+    <string name="acc_type_savings">Накопительный счёт / вклад</string>
+    <string name="acc_type_cash">Наличные</string>
+    <string name="acc_type_ewallet">Электронный кошелёк / счёт в сервисе</string>
+    <string name="acc_type_site_balance">Баланс на сайте</string>
+    <string name="acc_type_bonus">Бонусы и баллы</string>
+    <string name="acc_type_credit_card">Кредитная карта</string>
+    <string name="acc_type_debt">Долг</string>
+
+    <string name="cat_add">Добавить категорию</string>
+    <string name="cat_add_child">Подкатегория</string>
+    <string name="cat_name">Название категории</string>
+    <string name="cat_rename">Переименовать</string>
+    <string name="cat_delete">Удалить</string>
+    <string name="cat_delete_confirm">Удалить «%1$s» вместе с подкатегориями? Операции останутся, но будут без категории.</string>
+    <string name="action_close">Закрыть</string>
+    <string name="action_save">Сохранить</string>
 
     <string name="security_title">Защита</string>
     <string name="security_mode_device">Вход — через блокировку экрана устройства</string>
