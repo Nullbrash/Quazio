@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import io.github.nullbrash.quazio.core.lock.CheckResult
 import io.github.nullbrash.quazio.core.lock.PasswordVault
 import io.github.nullbrash.quazio.core.ui.res.Res
+import io.github.nullbrash.quazio.core.ui.SystemBack
 import io.github.nullbrash.quazio.core.ui.res.lock_blocked
 import io.github.nullbrash.quazio.core.ui.res.lock_code_saved
 import io.github.nullbrash.quazio.core.ui.res.lock_code_text
@@ -126,6 +127,9 @@ internal fun RecoveryCodeDialog(code: String, onDone: () -> Unit) {
     var copied by remember { mutableStateOf(false) }
     @Suppress("DEPRECATION") // новый Clipboard в Compose пока требует платформенного ClipEntry
     val clipboard = LocalClipboardManager.current
+    // «Назад» без этого проходила мимо окна и закрывала приложение: пароль уже задан,
+    // а код так и не подтверждён. Пока окно открыто, «назад» не делает ничего.
+    SystemBack {}
     AlertDialog(
         onDismissRequest = {},
         title = { Text(stringResource(Res.string.lock_recovery_code)) },
