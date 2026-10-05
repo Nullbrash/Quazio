@@ -10,6 +10,9 @@ import io.github.nullbrash.quazio.core.db.AndroidKeystoreKeyStore
 import io.github.nullbrash.quazio.core.lock.AppLock
 import io.github.nullbrash.quazio.core.lock.PasswordVault
 import io.github.nullbrash.quazio.core.ui.AppServices
+import io.github.nullbrash.quazio.core.ui.appStateStore
+import io.github.nullbrash.quazio.feature.calendar.AndroidCalendarSource
+import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
 
 /**
  * Службы основного процесса — лениво, при первом обращении (не в Application:
@@ -35,6 +38,8 @@ object AppGraph {
             platform = "android",
             // Телефон без блокировки экрана: финансы закрыты, пока не задан пароль Quazio.
             passwordRequired = true,
+            calendar = AndroidCalendarSource(context),
+            calendarPrefs = CalendarPrefs(db.appStateStore()),
         )
     }
 }

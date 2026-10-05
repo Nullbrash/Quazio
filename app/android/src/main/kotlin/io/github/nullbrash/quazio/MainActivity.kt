@@ -18,6 +18,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         val deviceAuth = AndroidDeviceAuthenticator(this)
         val fileSaver = AndroidFileSaver(this)
+        val calendarAccess = AndroidCalendarAccess(this)
         // После поворота экрана intent тот же — текст уже разобран, второй раз не нужен.
         if (savedInstanceState == null) incoming.offer(intent.getStringExtra(EXTRA_QUICK_TEXT))
         setContent {
@@ -27,6 +28,7 @@ class MainActivity : FragmentActivity() {
                 deviceAuth = deviceAuth,
                 fileSaver = fileSaver,
                 incoming = incoming,
+                calendarAccess = calendarAccess,
             )
         }
     }

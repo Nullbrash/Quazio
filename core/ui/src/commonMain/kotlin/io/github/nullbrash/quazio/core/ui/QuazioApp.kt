@@ -68,7 +68,12 @@ fun QuazioApp(
     deviceAuth: DeviceAuthenticator? = null,
     fileSaver: FileSaver? = null,
     incoming: IncomingText? = null,
-) = CompositionLocalProvider(LocalFileSaver provides fileSaver, LocalIncomingText provides incoming) {
+    calendarAccess: CalendarAccess? = null,
+) = CompositionLocalProvider(
+    LocalFileSaver provides fileSaver,
+    LocalIncomingText provides incoming,
+    LocalCalendarAccess provides calendarAccess,
+) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
         val startup by produceState<Startup>(Startup.Loading) {
             value = try {

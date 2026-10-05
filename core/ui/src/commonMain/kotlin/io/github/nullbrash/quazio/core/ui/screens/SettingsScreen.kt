@@ -33,6 +33,10 @@ fun SettingsScreen(versionName: String, services: AppServices, deviceAuth: Devic
         HorizontalDivider()
         FinanceSettingsSection(services)
         HorizontalDivider()
+        if (services.calendar != null && services.calendarPrefs != null) {
+            CalendarSettingsSection(services.calendar, services.calendarPrefs)
+            HorizontalDivider()
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.settings_about), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(Res.string.app_name), style = MaterialTheme.typography.headlineSmall)
