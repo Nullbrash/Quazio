@@ -112,7 +112,7 @@
     <string name="fin_tags">Метки</string>
     <string name="fin_more">Ещё</string>
     <string name="cal_title">Календарь</string>
-    <string name="cal_intro">Показывать события из календарей телефона — Google и других, — как Sectograph. Quazio их не копирует: события остаются в ваших календарях.</string>
+    <string name="cal_intro">Показывать события из календарей телефона — Google и других. Quazio их не копирует: события остаются в ваших календарях.</string>
     <string name="cal_enable">Включить</string>
     <string name="cal_change">Изменить</string>
     <string name="cal_turn_off">Выключить</string>
