@@ -47,7 +47,7 @@ import io.github.nullbrash.quazio.core.model.Money
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Калькулятор суммы — раскладка как в Wallet пользователя: `C ÷ × ⌫`, цифры, `− + =`,
+ * Калькулятор суммы — раскладка как в Money Manager пользователя: `C ÷ × ⌫`, цифры, `− + =`,
  * `, 0 000 ✓`. На ПК — ещё и с клавиатуры: цифры, + - * /, запятая/точка, Backspace,
  * Enter — готово, Esc — отмена. Отрицательная сумма допустима только если [allowNegative].
  * [allowSign] — можно начать с «+» или «−»: окно операции выбирает по знаку доход/расход;

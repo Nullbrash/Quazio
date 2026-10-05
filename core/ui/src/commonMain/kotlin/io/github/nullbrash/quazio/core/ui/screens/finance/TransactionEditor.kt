@@ -107,7 +107,7 @@ internal enum class EditorKind(val label: StringResource) {
 }
 
 /**
- * Окно операции по образцу Wallet пользователя.
+ * Окно операции по образцу Money Manager пользователя.
  * [prefill] — заполненные поля (черновик быстрого ввода). С [onDraft] «Сохранить» не пишет
  * в базу, а отдаёт операцию вызывающему: он сохранит её сам или вернёт в список черновиков.
  */
@@ -253,7 +253,7 @@ internal fun TransactionEditor(
                 EditorKind.entries.forEach { k -> FilterChip(selected = kind == k, onClick = { setKind(k) }, label = { Text(stringResource(k.label)) }) }
             }
 
-            // Дата и время — над суммой, как в Wallet.
+            // Дата и время — над суммой, как в Money Manager.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { pickDate = true }) { Text(dateText(dateTime)) }
                 OutlinedButton(onClick = { pickTime = true }) { Text(timeText(dateTime)) }
