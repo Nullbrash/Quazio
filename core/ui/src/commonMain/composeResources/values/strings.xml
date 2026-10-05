@@ -111,7 +111,8 @@
     <string name="fin_tags">Метки</string>
     <string name="fin_more">Ещё</string>
     <string name="fin_accounts_order">Порядок счетов</string>
-    <string name="fin_accounts_order_hint">Так счета идут в списке и при выборе счёта. Архивные — всегда в конце.</string>
+    <string name="fin_accounts_order_hint">Перетащите счёт: на телефоне — долгим нажатием на строку, мышью — за ≡. Так счета идут в списке и при выборе счёта. Архивные — всегда в конце.</string>
+    <string name="fin_drag">Перетащить</string>
     <string name="fin_move_up">Выше</string>
     <string name="fin_move_down">Ниже</string>
     <string name="quick_title">Быстрый ввод</string>

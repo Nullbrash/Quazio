@@ -5,7 +5,10 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -53,5 +56,38 @@ class AccountsOrderUiTest {
         onAllNodesWithContentDescription("Выше")[2].performClick()
         onAllNodesWithContentDescription("Выше")[1].performClick()
         waitUntil(timeoutMillis = 10_000) { names() == listOf("Наличные", "Карта", "Копилка") }
+    }
+
+    @Test
+    fun accountIsDraggedByHandle() = runComposeUiTest {
+        finance.createAccount(accountId, "Карта", FinAccountType.CARD)
+        finance.createAccount(accountId, "Копилка", FinAccountType.SAVINGS)
+        setContent { MaterialTheme { AccountsOrderScreen(services, accountId, finance.accounts(accountId)) {} } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Наличные")).fetchSemanticsNodes().isNotEmpty() }
+        // Карта, Копилка, Наличные: тянем «Наличные» за ≡ на две строки вверх.
+        val rowHeight = onNodeWithTag("drag-Карта").fetchSemanticsNode().size.height.toFloat()
+        onNodeWithTag("drag-Наличные").performTouchInput {
+            down(center)
+            repeat(20) { moveBy(Offset(0f, -rowHeight * 2.4f / 20)) }
+            up()
+        }
+        waitUntil(timeoutMillis = 10_000) { names() == listOf("Наличные", "Карта", "Копилка") }
+    }
+
+    @Test
+    fun accountIsDraggedAfterLongPressOnRow() = runComposeUiTest {
+        finance.createAccount(accountId, "Карта", FinAccountType.CARD)
+        finance.createAccount(accountId, "Копилка", FinAccountType.SAVINGS)
+        setContent { MaterialTheme { AccountsOrderScreen(services, accountId, finance.accounts(accountId)) {} } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Карта")).fetchSemanticsNodes().isNotEmpty() }
+        val rowHeight = onNodeWithTag("drag-Карта").fetchSemanticsNode().size.height.toFloat()
+        // Долгое нажатие на название «Карта», затем вниз на две строки — как пальцем на телефоне.
+        onAllNodes(hasText("Карта"))[0].performTouchInput { // [1] — тип счёта «Карта»
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            repeat(20) { moveBy(Offset(0f, rowHeight * 2.4f / 20)) }
+            up()
+        }
+        waitUntil(timeoutMillis = 10_000) { names() == listOf("Копилка", "Наличные", "Карта") }
     }
 }
