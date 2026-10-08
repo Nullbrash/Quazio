@@ -22,8 +22,7 @@ CREATE TABLE recurring (
     paused INTEGER NOT NULL DEFAULT 0,
     -- После паузы: повторения раньше этой даты не спрашиваются и не записываются.
     active_from TEXT,
-    -- Платёж 29–31-го (29 февраля — у ежегодного): куда он в месяце без этого числа.
-    -- Выбирает пользователь: last — последний день, next — 1-е следующего, skip — пропуск.
+    -- Не используется с миграции 5 (перенос 29–31-го — «по счёту дней»); осталась из-за CHECK.
     short_month TEXT CHECK (short_month IN ('last', 'next', 'skip')),
     hlc TEXT NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0

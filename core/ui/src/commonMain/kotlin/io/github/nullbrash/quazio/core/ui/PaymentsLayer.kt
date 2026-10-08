@@ -20,9 +20,11 @@ internal fun paymentEvents(services: AppServices, from: LocalDate, toExclusive: 
         .filter { it.state != OccurrenceState.SKIPPED }
         .map { o ->
             val start = LocalDateTime(o.date, LocalTime(0, 0)).toInstant(TimeZone.UTC).toEpochMilliseconds()
+            val end = LocalDateTime(o.windowEnd, LocalTime(0, 0)).toInstant(TimeZone.UTC).toEpochMilliseconds() + 86_400_000L
+            // Срок с разбросом — на все его дни (решение пользователя).
             CalendarEvent(
                 eventId = "payment:${o.recurring.id}|${o.date}", calendarId = PAYMENTS_CALENDAR, title = o.recurring.name,
-                start = start, end = start + 86_400_000L, allDay = true, timeZone = "UTC", color = PAYMENT_COLOR,
+                start = start, end = end, allDay = true, timeZone = "UTC", color = PAYMENT_COLOR,
                 location = null, recurring = true, instanceStart = start,
                 payment = PaymentMark(o.recurring.id, waiting = o.state == OccurrenceState.PENDING),
             )

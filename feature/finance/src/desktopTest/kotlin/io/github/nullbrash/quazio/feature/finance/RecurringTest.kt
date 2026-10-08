@@ -5,6 +5,8 @@ import io.github.nullbrash.quazio.core.accounts.AccountService
 import io.github.nullbrash.quazio.core.accounts.DeviceClock
 import io.github.nullbrash.quazio.core.db.QuazioDatabase
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -95,28 +97,97 @@ class RecurringTest {
         assertEquals(listOf(d("2026-10-15")), rec.pending(accountId, d("2026-10-20")).map { it.date })
     }
 
+    private fun datesOf(start: String, rrule: String = "FREQ=MONTHLY", from: String = "2026-01-01", to: String = "2027-01-01") =
+        rec.save(accountId, RecurringDraft(name = "П$start$rrule", kind = TxnKind.EXPENSE, amountMinor = 100, finAccountId = cash(),
+            rrule = rrule, startDate = d(start))).let { id ->
+            rec.occurrences(accountId, d(from), d(to), d(from)).filter { it.recurring.id == id }.map { it.date.toString() }
+        }
+
     @Test
-    fun lastDayOfMonthAndEndDate() {
-        // «31-го» для платежей — последний день месяца (так пишет окно платежа).
-        val id = rec.save(accountId, RecurringDraft(
-            name = "Аренда", kind = TxnKind.EXPENSE, amountMinor = 1_000_000, finAccountId = cash(),
-            rrule = "FREQ=MONTHLY;BYMONTHDAY=28,29,30,31;BYSETPOS=-1", startDate = d("2026-01-31"), endDate = d("2026-04-30"),
-        ))
-        val dates = rec.occurrences(accountId, d("2026-01-01"), d("2027-01-01"), d("2026-01-01")).map { it.date }
-        assertEquals(listOf(d("2026-01-31"), d("2026-02-28"), d("2026-03-31"), d("2026-04-30")), dates)
-        assertEquals(null, rec.next(rec.byId(id)!!, d("2026-05-01")))
+    fun shortMonthsCountDaysForward() {
+        // Решение пользователя: не хватает дней — вперёд на столько, сколько не хватило.
+        // Февраль (27, 28, 1): 29 → 1, 30 → 2, 31 → 3 марта; 30-дневный месяц: 31 → 1-е.
+        assertEquals(listOf("2026-01-31", "2026-03-03", "2026-03-31", "2026-05-01", "2026-05-31"), datesOf("2026-01-31", to = "2026-06-01"))
+        assertEquals(listOf("2026-01-30", "2026-03-02", "2026-03-30", "2026-04-30"), datesOf("2026-01-30", to = "2026-05-01"))
+        assertEquals(listOf("2026-01-29", "2026-03-01", "2026-03-29"), datesOf("2026-01-29", to = "2026-04-01"))
+        // Високосный год: 29 февраля есть.
+        assertEquals(listOf("2028-01-31", "2028-03-02"), datesOf("2028-01-31", from = "2028-01-01", to = "2028-03-10"))
+        // Ежегодный 29 февраля — 1 марта в невисокосные годы.
+        assertEquals(listOf("2028-02-29", "2029-03-01", "2030-03-01", "2031-03-01", "2032-02-29"),
+            datesOf("2028-02-29", "FREQ=YEARLY", from = "2028-01-01", to = "2033-01-01"))
+        // Раз в 3 месяца с 31-го: май, август — 31-е; ноябрь (30 дней) — 1 декабря.
+        assertEquals(listOf("2026-05-31", "2026-08-31", "2026-12-01"), datesOf("2026-05-31", "FREQ=MONTHLY;INTERVAL=3", from = "2026-05-01"))
     }
 
     @Test
-    fun shortMonthNextAndSkip() {
-        // Выбор пользователя: 31-е в коротком месяце — 1-е следующего или пропуск.
-        fun dates(policy: ShortMonth, rrule: String) = rec.save(accountId, RecurringDraft(
-            name = "П$policy", kind = TxnKind.EXPENSE, amountMinor = 100, finAccountId = cash(),
-            rrule = rrule, startDate = d("2026-01-31"), shortMonth = policy,
-        )).let { id -> rec.occurrences(accountId, d("2026-01-01"), d("2026-05-15"), d("2026-01-01")).filter { it.recurring.id == id }.map { it.date } }
-        assertEquals(listOf(d("2026-01-31"), d("2026-03-01"), d("2026-03-31"), d("2026-05-01")),
-            dates(ShortMonth.NEXT, "FREQ=MONTHLY;BYMONTHDAY=28,29,30,31;BYSETPOS=-1"))
-        assertEquals(listOf(d("2026-01-31"), d("2026-03-31")), dates(ShortMonth.SKIP, "FREQ=MONTHLY"))
+    fun endDateAndPreview() {
+        val id = rec.save(accountId, RecurringDraft(
+            name = "Аренда", kind = TxnKind.EXPENSE, amountMinor = 1_000_000, finAccountId = cash(),
+            rrule = "FREQ=MONTHLY", startDate = d("2026-01-15"), endDate = d("2026-04-30"),
+        ))
+        assertEquals(listOf(d("2026-01-15"), d("2026-02-15"), d("2026-03-15"), d("2026-04-15")),
+            rec.occurrences(accountId, d("2026-01-01"), d("2027-01-01"), d("2026-01-01")).map { it.date })
+        assertEquals(null, rec.next(rec.byId(id)!!, d("2026-05-01")))
+        // Окно платежа показывает даты до сохранения.
+        val draft = RecurringDraft(name = "Х", kind = TxnKind.EXPENSE, amountMinor = 1, finAccountId = cash(), rrule = "FREQ=MONTHLY", startDate = d("2026-01-31"))
+        assertEquals(listOf(d("2026-01-31"), d("2026-03-03"), d("2026-03-31")), rec.preview(draft, 3, from = d("2026-01-01")))
+        // У идущего платежа — с сегодняшнего дня, не с первого платежа.
+        assertEquals(listOf(d("2026-05-31"), d("2026-07-01")), rec.preview(draft, 2, from = d("2026-05-10")))
+    }
+
+    @Test
+    fun windowWaitsFromFirstDayAndGoesOverdue() {
+        // «Деньги приходят в 20-х»: срок 20–25.
+        val id = rec.save(accountId, RecurringDraft(name = "С аренды", kind = TxnKind.INCOME, amountMinor = 2_000_000, finAccountId = cash(),
+            rrule = "FREQ=MONTHLY", startDate = d("2026-10-20"), windowDays = 5))
+        assertTrue(rec.pending(accountId, d("2026-10-19")).isEmpty())
+        val o = rec.pending(accountId, d("2026-10-22")).single()
+        assertEquals(d("2026-10-25"), o.windowEnd)
+        assertEquals(false, o.overdue(d("2026-10-22")))
+        assertEquals(true, rec.pending(accountId, d("2026-10-27")).single().overdue(d("2026-10-27"))) // «срок прошёл»
+        // У платежа на один день — без пометки, даже когда день прошёл.
+        val single = rec.save(accountId, RecurringDraft(name = "Связь", kind = TxnKind.EXPENSE, amountMinor = 100, finAccountId = cash(),
+            rrule = "FREQ=MONTHLY", startDate = d("2026-10-10")))
+        val late = rec.pending(accountId, d("2026-10-27")).single { it.recurring.id == single }
+        assertEquals(false, late.overdue(d("2026-10-27")))
+        // В календаре — на все дни срока.
+        assertEquals(1, rec.occurrences(accountId, d("2026-10-24"), d("2026-10-25"), d("2026-10-22")).size)
+        // «Записать» — сегодняшней датой.
+        val t = rec.defaultTxn(rec.byId(id)!!, d("2026-10-20"), tz, today = d("2026-10-23"))
+        assertEquals(d("2026-10-23"), kotlin.time.Instant.fromEpochMilliseconds(t.occurredAt).toLocalDateTime(kotlinx.datetime.TimeZone.of(tz)).date)
+        // Срок через конец месяца: 29–31 в феврале → 1–3 марта.
+        val feb = rec.save(accountId, RecurringDraft(name = "Конец месяца", kind = TxnKind.INCOME, amountMinor = 100, finAccountId = cash(),
+            rrule = "FREQ=MONTHLY", startDate = d("2027-01-29"), windowDays = 2))
+        val march = rec.occurrences(accountId, d("2027-02-01"), d("2027-03-05"), d("2027-01-01")).single { it.recurring.id == feb }
+        assertEquals(d("2027-03-01") to d("2027-03-03"), march.date to march.windowEnd)
+    }
+
+    @Test
+    fun windowIsSuggestedFromActualDays() {
+        val id = rec.save(accountId, RecurringDraft(name = "С аренды", kind = TxnKind.INCOME, amountMinor = 2_000_000, finAccountId = cash(),
+            rrule = "FREQ=MONTHLY", startDate = d("2026-05-20"), windowDays = 5))
+        fun arrived(month: Int, day: Int) {
+            val r = rec.byId(id)!!
+            val nominal = LocalDate(2026, month, 20)
+            val at = kotlinx.datetime.LocalDateTime(LocalDate(2026, month, day), kotlinx.datetime.LocalTime(12, 0))
+                .toInstant(kotlinx.datetime.TimeZone.of(tz)).toEpochMilliseconds()
+            rec.record(accountId, id, nominal, rec.defaultTxn(r, nominal, tz).copy(occurredAt = at))
+        }
+        arrived(5, 21); arrived(6, 23)
+        assertEquals(null, rec.suggestWindow(accountId, rec.byId(id)!!)) // мало данных
+        arrived(7, 24); arrived(8, 23)
+        assertEquals(WindowSuggestion(1, 4, 4), rec.suggestWindow(accountId, rec.byId(id)!!)) // «обычно 21–24»
+
+        rec.dismissSuggestion(accountId, rec.byId(id)!!)
+        assertEquals(null, rec.suggestWindow(accountId, rec.byId(id)!!)) // «Не сейчас» — до новых записей
+        arrived(9, 27) // пришёл позже срока — предложит расширить
+        val wider = rec.suggestWindow(accountId, rec.byId(id)!!)!!
+        assertEquals(WindowSuggestion(1, 7, 5), wider)
+
+        rec.applySuggestion(accountId, rec.byId(id)!!, wider)
+        val r = rec.byId(id)!!
+        assertEquals(d("2026-05-21") to 6, r.startDate to r.windowDays)
+        assertTrue(r.activeFrom != null) // новый срок — с сегодняшнего дня, прошлое не «ждёт» заново
     }
 
     @Test
@@ -126,6 +197,11 @@ class RecurringTest {
         }
         assertFailsWith<IllegalArgumentException> {
             rec.save(accountId, RecurringDraft(name = "X", kind = TxnKind.EXPENSE, amountMinor = 100, finAccountId = cash(), rrule = "FREQ=HOURLY", startDate = d("2026-10-01")))
+        }
+        // С разбросом — только «спрашивать»: день прихода заранее неизвестен.
+        assertFailsWith<IllegalArgumentException> {
+            rec.save(accountId, RecurringDraft(name = "X", kind = TxnKind.EXPENSE, amountMinor = 100, finAccountId = cash(), rrule = "FREQ=MONTHLY",
+                startDate = d("2026-10-01"), windowDays = 3, mode = RecurringMode.AUTO))
         }
     }
 

@@ -1,0 +1,4 @@
+-- Срок платежа с разбросом: «с 20 по 25» — window_days = 5 (0 — один день).
+-- Колонка short_month из миграции 4 больше не используется: перенос 29–31-го теперь
+-- «по счёту дней» (решение пользователя); удалить её SQLite не даёт из-за CHECK.
+ALTER TABLE recurring ADD COLUMN window_days INTEGER NOT NULL DEFAULT 0;

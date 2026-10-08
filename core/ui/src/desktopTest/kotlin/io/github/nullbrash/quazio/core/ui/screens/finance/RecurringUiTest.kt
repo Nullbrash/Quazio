@@ -56,36 +56,92 @@ class RecurringUiTest {
     private fun cash() = finance.accounts(accountId).first().id
     private fun all() = finance.transactions(accountId, Long.MIN_VALUE, Long.MAX_VALUE)
 
-    /** Первый платёж бывает и 29–31-го (тесты идут по сегодняшней дате) — тогда выбрать перенос. */
-    private fun androidx.compose.ui.test.ComposeUiTest.answerShortMonthIfAsked() {
-        if (onAllNodes(hasText("на последний день месяца")).fetchSemanticsNodes().isNotEmpty()) onNodeWithText("на последний день месяца").performScrollTo().performClick()
+    /**
+     * «Сохранить»: если даты сдвигаются (первый платёж 29–31-го — тесты идут по сегодняшней дате),
+     * окно сначала спрашивает «Внести так?».
+     */
+    private fun androidx.compose.ui.test.ComposeUiTest.saveConfirmingShift() {
+        onNodeWithText("Сохранить").performClick()
+        waitUntil(timeoutMillis = 10_000) { finance.recurring.all(accountId).isNotEmpty() || onAllNodes(hasText("Внести так")).fetchSemanticsNodes().isNotEmpty() }
+        if (finance.recurring.all(accountId).isEmpty()) onNodeWithText("Внести так").performClick()
+        waitUntil(timeoutMillis = 10_000) { finance.recurring.all(accountId).isNotEmpty() }
+    }
+
+    private fun data(): FinanceData {
+        val accs = finance.accounts(accountId)
+        return FinanceData(accountId, accs, finance.total(accs), finance.totals(accountId, 0, 0), emptyList(),
+            finance.categories(accountId), finance.tags(accountId), calculatorOnNew = false)
+    }
+
+    private fun operation(y: Int, m: Int, d: Int, name: String) = TimeZone.currentSystemDefault().let { zone ->
+        TransactionDraft(kind = TxnKind.INCOME, amountMinor = 2_000_000, finAccountId = cash(),
+            occurredAt = toMillis(kotlinx.datetime.LocalDateTime(y, m, d, 12, 0), zone), timeZone = zone.id, description = name)
     }
 
     @Test
-    fun shortMonthMustBeChosenExplicitly() = runComposeUiTest {
-        // «Сделать регулярной» с операции 31 декабря: первый платёж — 31 января, дальше февраль без 31-го.
-        val zone = TimeZone.currentSystemDefault()
-        val from = TransactionDraft(kind = TxnKind.EXPENSE, amountMinor = 1_000_000, finAccountId = cash(),
-            occurredAt = toMillis(kotlinx.datetime.LocalDateTime(2025, 12, 31, 12, 0), zone), timeZone = zone.id, description = "Аренда")
-        val accs = finance.accounts(accountId)
-        val data = FinanceData(accountId, accs, finance.total(accs), finance.totals(accountId, 0, 0), emptyList(),
-            finance.categories(accountId), finance.tags(accountId), calculatorOnNew = false)
+    fun shiftedDatesAreShownAndConfirmed() = runComposeUiTest {
+        // «Сделать регулярной» с операции 31 декабря: первый — 31 января, в феврале 31-го нет → 3 марта.
+        // Даты — в будущем от сегодняшнего: окно показывает ближайшие платежи с сегодняшнего дня.
         var closed = false
-        setContent { MaterialTheme { RecurringEditor(services, data, null, from) { closed = true } } }
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("В месяцах без 31-го числа платёж переносится:")).fetchSemanticsNodes().isNotEmpty() }
-        // Без выбора не сохраняется — никакого переноса по умолчанию.
+        setContent { MaterialTheme { RecurringEditor(services, data(), null, operation(2030, 12, 31, "Аренда")) { closed = true } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Ближайшие платежи", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("31 января, 3 марта, 31 марта", substring = true).assertExists()
+
         onNodeWithText("Сохранить").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Выберите, куда переносить", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Платежи лягут так")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Нет, изменить").performClick() // назад в окно — ничего не сохранено
         assertTrue(finance.recurring.all(accountId).isEmpty())
 
-        onNodeWithText("на 1-е число следующего месяца").performScrollTo().performClick()
+        onNodeWithText("Сохранить").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Внести так")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Внести так").performClick()
+        waitUntil(timeoutMillis = 10_000) { closed }
+        val dates = finance.recurring.occurrences(accountId, kotlinx.datetime.LocalDate(2031, 1, 1), kotlinx.datetime.LocalDate(2031, 4, 2),
+            kotlinx.datetime.LocalDate(2031, 1, 1)).map { it.date.toString() }
+        assertEquals(listOf("2031-01-31", "2031-03-03", "2031-03-31"), dates)
+    }
+
+    @Test
+    fun windowTermDisablesAutoAndIsSaved() = runComposeUiTest {
+        var closed = false
+        setContent { MaterialTheme { RecurringEditor(services, data(), null, operation(2030, 12, 20, "С аренды")) { closed = true } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("только в этот день")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("только в этот день").performScrollTo().performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("с 20 по 25")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("с 20 по 25").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("С разбросом срока", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("20–25 января", substring = true).assertExists()
         onNodeWithText("Сохранить").performClick()
         waitUntil(timeoutMillis = 10_000) { closed }
         val r = finance.recurring.all(accountId).single()
-        assertEquals(io.github.nullbrash.quazio.feature.finance.ShortMonth.NEXT, r.shortMonth)
-        val dates = finance.recurring.occurrences(accountId, kotlinx.datetime.LocalDate(2026, 1, 1), kotlinx.datetime.LocalDate(2026, 4, 2),
-            kotlinx.datetime.LocalDate(2026, 1, 1)).map { it.date.toString() }
-        assertEquals(listOf("2026-01-31", "2026-03-01", "2026-03-31"), dates)
+        assertEquals(5, r.windowDays)
+        assertEquals(RecurringMode.ASK, r.mode)
+    }
+
+    @Test
+    fun windowPaymentWaitsWithItsTerm() = runComposeUiTest {
+        finance.recurring.save(accountId, RecurringDraft(name = "С аренды", kind = TxnKind.INCOME, amountMinor = 2_000_000, finAccountId = cash(),
+            rrule = "FREQ=MONTHLY", startDate = today.minus(DatePeriod(days = 1)), windowDays = 5))
+        val until = today.minus(DatePeriod(days = 1)).plus(DatePeriod(days = 5)).day
+        setContent { MaterialTheme { FinanceScreen(services) } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("ожидается до $until-го", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun termSuggestionIsOfferedAndApplied() = runComposeUiTest {
+        val id = finance.recurring.save(accountId, RecurringDraft(name = "С аренды", kind = TxnKind.INCOME, amountMinor = 2_000_000, finAccountId = cash(),
+            rrule = "FREQ=MONTHLY", startDate = kotlinx.datetime.LocalDate(2026, 5, 20), windowDays = 5))
+        val zone = TimeZone.currentSystemDefault()
+        listOf(5 to 21, 6 to 23, 7 to 24, 8 to 23).forEach { (m, day) ->
+            val nominal = kotlinx.datetime.LocalDate(2026, m, 20)
+            finance.recurring.record(accountId, id, nominal, finance.recurring.defaultTxn(finance.recurring.byId(id)!!, nominal, zone.id)
+                .copy(occurredAt = toMillis(kotlinx.datetime.LocalDateTime(2026, m, day, 12, 0), zone)))
+        }
+        setContent { MaterialTheme { RecurringEditor(services, data(), id, null) {} } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Обычно приходит 21–24-го (по последним 4)", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Изменить срок").performScrollTo().performClick()
+        waitUntil(timeoutMillis = 10_000) { finance.recurring.byId(id)!!.windowDays == 3 }
+        assertEquals(kotlinx.datetime.LocalDate(2026, 5, 21), finance.recurring.byId(id)!!.startDate)
     }
 
     @Test
@@ -111,9 +167,7 @@ class RecurringUiTest {
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Введите сумму")).fetchSemanticsNodes().isNotEmpty() }
         listOf("6", "5", "0").forEach { onNodeWithText(it).performClick() }
         onNodeWithContentDescription("Готово").performClick()
-        answerShortMonthIfAsked()
-        onNodeWithText("Сохранить").performClick()
-        waitUntil(timeoutMillis = 10_000) { finance.recurring.all(accountId).isNotEmpty() }
+        saveConfirmingShift()
 
         val r = finance.recurring.all(accountId).single()
         assertEquals("МТС", r.name)
@@ -166,9 +220,7 @@ class RecurringUiTest {
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Сделать регулярной")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText("Сделать регулярной").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Новый регулярный платёж")).fetchSemanticsNodes().isNotEmpty() }
-        answerShortMonthIfAsked()
-        onNodeWithText("Сохранить").performClick()
-        waitUntil(timeoutMillis = 10_000) { finance.recurring.all(accountId).isNotEmpty() }
+        saveConfirmingShift()
 
         val r = finance.recurring.all(accountId).single()
         assertEquals("Музыка", r.name)

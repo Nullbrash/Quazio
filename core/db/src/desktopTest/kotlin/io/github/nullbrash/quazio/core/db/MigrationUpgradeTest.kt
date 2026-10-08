@@ -38,4 +38,18 @@ class MigrationUpgradeTest {
         assertEquals(100, db.financeQueries.txnById("t1").executeAsOne().amount_minor)
         assertTrue(db.recurringQueries.recurringOf("acc").executeAsList().isEmpty())
     }
+
+    @Test
+    fun version5PaymentGetsSingleDayTerm() {
+        // Версия 5 — с регулярными платежами до разброса срока (так в папке данных ПК для разработки).
+        QuazioDatabase.Schema.migrate(driver, 1, 5)
+        driver.execute(null, "INSERT INTO recurring(id, account_id, name, kind, amount_minor, fin_account_id, rrule, start_date, hlc) " +
+            "VALUES ('r1', 'acc', 'С аренды', 'income', 2000000, 'a1', 'FREQ=MONTHLY', '2026-10-20', 'h')", 0)
+
+        QuazioDatabase.Schema.migrate(driver, 5, QuazioDatabase.Schema.version)
+
+        val r = QuazioDatabase(driver).recurringQueries.recurringById("r1").executeAsOne()
+        assertEquals(0, r.window_days)
+        assertEquals("2026-10-20", r.start_date)
+    }
 }

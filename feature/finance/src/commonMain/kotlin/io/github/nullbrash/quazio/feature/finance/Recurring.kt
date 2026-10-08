@@ -4,14 +4,17 @@ import io.github.nullbrash.quazio.core.accounts.DeviceClock
 import io.github.nullbrash.quazio.core.db.ChangeLog
 import io.github.nullbrash.quazio.core.db.QuazioDatabase
 import io.github.nullbrash.quazio.core.model.Uuid7
+import io.github.nullbrash.quazio.engine.recurrence.Frequency
 import io.github.nullbrash.quazio.engine.recurrence.RRule
 import io.github.nullbrash.quazio.engine.recurrence.Recurrence
+import io.github.nullbrash.quazio.engine.recurrence.Until
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.plus
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
@@ -23,23 +26,6 @@ enum class RecurringMode(val dbValue: String) {
 
     companion object {
         fun fromDb(value: String): RecurringMode = entries.first { it.dbValue == value }
-    }
-}
-
-/**
- * Платёж 29–31-го (у ежегодного — 29 февраля) в месяце без этого числа. Программе неоткуда
- * знать, как принято у конкретного платежа, — выбирает пользователь (его решение).
- */
-enum class ShortMonth(val dbValue: String) {
-    /** Последний день месяца (раньше). */
-    LAST("last"),
-    /** 1-е число следующего месяца (позже). */
-    NEXT("next"),
-    /** Пропустить этот месяц (так по RFC 5545). */
-    SKIP("skip");
-
-    companion object {
-        fun fromDb(value: String?): ShortMonth? = entries.firstOrNull { it.dbValue == value }
     }
 }
 
@@ -60,9 +46,10 @@ data class Recurring(
     /** За сколько дней напомнить (напоминания — следующая фаза плана). */
     val remindDays: Int,
     val paused: Boolean,
-    /** После паузы: раньше этой даты повторения не спрашиваются. */
+    /** После паузы или смены срока: раньше этой даты повторения не спрашиваются. */
     val activeFrom: LocalDate?,
-    val shortMonth: ShortMonth? = null,
+    /** Разброс: «с 20 по 25» — 5 дней; 0 — один день. */
+    val windowDays: Int = 0,
 )
 
 /** Что сохранить; [id] = null — новый платёж. */
@@ -80,7 +67,7 @@ data class RecurringDraft(
     val mode: RecurringMode = RecurringMode.ASK,
     val remindDays: Int = 1,
     val paused: Boolean = false,
-    val shortMonth: ShortMonth? = null,
+    val windowDays: Int = 0,
 )
 
 enum class OccurrenceState {
@@ -88,13 +75,25 @@ enum class OccurrenceState {
     RECORDED,
     /** Пропущено или записанное потом удалили — больше не спрашивается. */
     SKIPPED,
-    /** День наступил, «спрашивать» — ждёт подтверждения. */
+    /** Срок наступил, «спрашивать» — ждёт подтверждения. */
     PENDING,
     /** Ещё впереди. */
     PLANNED,
 }
 
-data class Occurrence(val recurring: Recurring, val date: LocalDate, val state: OccurrenceState)
+/** Повторение платежа: срок [date]…[windowEnd] (у платежа без разброса — один день). */
+data class Occurrence(
+    val recurring: Recurring,
+    val date: LocalDate,
+    val state: OccurrenceState,
+    val windowEnd: LocalDate = date,
+) {
+    /** Ждёт, а срок с разбросом уже прошёл (у платежа на один день такой пометки нет — была бы всегда). */
+    fun overdue(today: LocalDate) = state == OccurrenceState.PENDING && recurring.windowDays > 0 && today > windowEnd
+}
+
+/** Предложение подстроить срок по фактическим дням прихода: смещения от номинальной даты. */
+data class WindowSuggestion(val fromOffset: Int, val toOffset: Int, val basedOn: Int)
 
 /**
  * Регулярные платежи: правило в финансах, операция — в день платежа (сама или после
@@ -117,10 +116,14 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
         val toAccount = if (draft.kind == TxnKind.TRANSFER) draft.toFinAccountId else null
         val hlc = clock.now()
         val old = draft.id?.let { q.recurringById(it).executeAsOneOrNull() }
-        // Снятие с паузы: пропущенное за паузу не спрашивается задним числом.
+        val termChanged = old != null && (old.rrule != draft.rrule || old.start_date != draft.startDate.toString() ||
+            old.window_days != draft.windowDays.toLong())
         val activeFrom = when {
             old == null -> null
+            // Снятие с паузы: пропущенное за паузу не спрашивается задним числом.
             old.paused != 0L && !draft.paused -> today().toString()
+            // Новый срок — с сегодняшнего дня: прошлые месяцы не становятся заново «ждущими».
+            termChanged && hasRecords(accountId, old.id) -> today().toString()
             else -> old.active_from
         }
         val fields = mapOf(
@@ -128,13 +131,13 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
             "fin_account_id" to draft.finAccountId, "to_fin_account_id" to toAccount, "category_id" to category,
             "rrule" to draft.rrule, "start_date" to draft.startDate.toString(), "end_date" to draft.endDate?.toString(),
             "mode" to draft.mode.dbValue, "remind_days" to draft.remindDays.toString(), "paused" to flag(draft.paused),
-            "active_from" to activeFrom, "short_month" to draft.shortMonth?.dbValue,
+            "active_from" to activeFrom, "window_days" to draft.windowDays.toString(),
         )
         if (old == null) {
             val id = Uuid7.generate(clock.wallMillis())
             q.insertRecurring(id, accountId, name, draft.kind.dbValue, draft.amountMinor, draft.finAccountId, toAccount, category,
                 draft.rrule, draft.startDate.toString(), draft.endDate?.toString(), draft.mode.dbValue, draft.remindDays.toLong(),
-                if (draft.paused) 1 else 0, null, draft.shortMonth?.dbValue, hlc.toString())
+                if (draft.paused) 1 else 0, null, draft.windowDays.toLong(), hlc.toString())
             changeLog.record(accountId, T_RECURRING, id, hlc, fields + ("currency" to "RUB"))
             id
         } else {
@@ -143,13 +146,13 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
                 "fin_account_id" to old.fin_account_id, "to_fin_account_id" to old.to_fin_account_id, "category_id" to old.category_id,
                 "rrule" to old.rrule, "start_date" to old.start_date, "end_date" to old.end_date, "mode" to old.mode,
                 "remind_days" to old.remind_days.toString(), "paused" to old.paused.toString(), "active_from" to old.active_from,
-                "short_month" to old.short_month,
+                "window_days" to old.window_days.toString(),
             )
             val changed = fields.filter { (k, v) -> before[k] != v }
             if (changed.isNotEmpty()) {
                 q.updateRecurring(name, draft.kind.dbValue, draft.amountMinor, draft.finAccountId, toAccount, category, draft.rrule,
                     draft.startDate.toString(), draft.endDate?.toString(), draft.mode.dbValue, draft.remindDays.toLong(),
-                    if (draft.paused) 1 else 0, activeFrom, draft.shortMonth?.dbValue, hlc.toString(), old.id)
+                    if (draft.paused) 1 else 0, activeFrom, draft.windowDays.toLong(), hlc.toString(), old.id)
                 changeLog.record(accountId, T_RECURRING, old.id, hlc, changed)
             }
             old.id
@@ -164,15 +167,15 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
         changeLog.record(old.account_id, T_RECURRING, id, hlc, mapOf("deleted" to "1"))
     }
 
-    /** Повторения в [from, toExclusive) по всем действующим платежам — для календаря и списков. */
+    /** Повторения, чей срок пересекает [from, toExclusive), по всем действующим платежам — для календаря и списков. */
     fun occurrences(accountId: String, from: LocalDate, toExclusive: LocalDate, today: LocalDate = today()): List<Occurrence> {
         val done = doneIds(accountId)
         return all(accountId).filter { !it.paused }.flatMap { r ->
-            dates(r).dropWhile { it < from }.takeWhile { it < toExclusive }.mapNotNull { d -> occurrence(r, d, done, today) }.toList()
+            dates(r).takeWhile { it < toExclusive }.filter { end(r, it) >= from }.mapNotNull { d -> occurrence(r, d, done, today) }.toList()
         }.sortedWith(compareBy({ it.date }, { it.recurring.name }))
     }
 
-    /** Наступившие повторения «спрашивать», которые ещё не записаны и не пропущены. */
+    /** Повторения «спрашивать», чей срок наступил, ещё не записанные и не пропущенные. */
     fun pending(accountId: String, today: LocalDate = today()): List<Occurrence> {
         val done = doneIds(accountId)
         return all(accountId).filter { !it.paused && it.mode == RecurringMode.ASK }.flatMap { r ->
@@ -182,6 +185,10 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
 
     /** Ближайшее повторение не раньше [today]; null — платёж закончился. */
     fun next(r: Recurring, today: LocalDate = today()): LocalDate? = dates(r).firstOrNull { it >= today }
+
+    /** Ближайшие даты черновика, чей срок не раньше [from], — для окна платежа (как лягут, до сохранения). */
+    fun preview(draft: RecurringDraft, count: Int, from: LocalDate = today()): List<LocalDate> =
+        draft.toModel().let { r -> dates(r).filter { end(r, it) >= from }.take(count).toList() }
 
     /** «Записывать сам»: операции за наступившие дни (и пропущенные, пока Quazio был закрыт). Сколько записано. */
     fun recordDue(accountId: String, timeZone: String, today: LocalDate = today()): Int = db.transactionWithResult {
@@ -196,7 +203,7 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
         count
     }
 
-    /** Записать повторение; [txn] — поля из окна подтверждения (сумму и прочее можно поправить). */
+    /** Записать повторение; [txn] — поля из окна подтверждения (сумму, дату и прочее можно поправить). */
     fun record(accountId: String, recurringId: String, date: LocalDate, txn: TransactionDraft) = db.transaction {
         val r = requireNotNull(byId(recurringId)) { "Нет платежа $recurringId" }
         if (occurrenceId(r.id, date) in doneIds(accountId)) return@transaction
@@ -210,8 +217,54 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
         insertOccurrence(accountId, r, date, r.toTxn(date, timeZone), deleted = true)
     }
 
-    /** Поля операции повторения по умолчанию — как в платеже, в 12:00 дня платежа. */
-    fun defaultTxn(r: Recurring, date: LocalDate, timeZone: String): TransactionDraft = r.toTxn(date, timeZone)
+    /**
+     * Поля операции повторения по умолчанию — как в платеже, в 12:00. Дата: у платежа с
+     * разбросом — сегодня (день прихода заранее неизвестен), иначе — день платежа.
+     */
+    fun defaultTxn(r: Recurring, date: LocalDate, timeZone: String, today: LocalDate = today()): TransactionDraft =
+        r.toTxn(if (r.windowDays > 0 && today >= date) today else date, timeZone)
+
+    /**
+     * Подстроить срок по истории (решение пользователя): после 3 записанных повторений — по
+     * последним 6 фактическим дням прихода срок «от самого раннего до самого позднего».
+     * null — данных мало, срок уже такой или предложение отложено до новых записей.
+     */
+    fun suggestWindow(accountId: String, r: Recurring): WindowSuggestion? {
+        if (r.mode != RecurringMode.ASK) return null
+        val offsets = recordedOffsets(accountId, r)
+        if (offsets.size < MIN_RECORDS) return null
+        val last = offsets.takeLast(LAST_RECORDS)
+        val s = WindowSuggestion(last.min(), last.max(), last.size)
+        if (s.fromOffset == 0 && s.toOffset == r.windowDays) return null
+        if (dismissedAt(r.id) == offsets.size) return null
+        return s
+    }
+
+    /** «Не сейчас»: предложение вернётся, когда появятся новые записи. */
+    fun dismissSuggestion(accountId: String, r: Recurring) {
+        db.appStateQueries.put(KEY_DISMISS + r.id, recordedOffsets(accountId, r).size.toString())
+    }
+
+    /** «Изменить срок»: первый день сдвигается на начало предложенного срока. */
+    fun applySuggestion(accountId: String, r: Recurring, s: WindowSuggestion): String = save(accountId, RecurringDraft(
+        id = r.id, name = r.name, kind = r.kind, amountMinor = r.amountMinor, finAccountId = r.finAccountId,
+        toFinAccountId = r.toFinAccountId, categoryId = r.categoryId, rrule = r.rrule,
+        startDate = r.startDate.plus(DatePeriod(days = s.fromOffset)), endDate = r.endDate, mode = r.mode,
+        remindDays = r.remindDays, paused = r.paused, windowDays = s.toOffset - s.fromOffset,
+    ))
+
+    /** На сколько дней от номинальной даты приходили записанные повторения (по порядку дат). */
+    private fun recordedOffsets(accountId: String, r: Recurring): List<Int> =
+        q.recordedOf(accountId, likePrefix("${r.id}|")).executeAsList().mapNotNull { row ->
+            val nominal = runCatching { LocalDate.parse(row.id.substringAfter('|')) }.getOrNull() ?: return@mapNotNull null
+            val zone = runCatching { TimeZone.of(row.tz) }.getOrDefault(TimeZone.currentSystemDefault())
+            nominal to nominal.daysUntil(Instant.fromEpochMilliseconds(row.occurred_at).toLocalDateTime(zone).date)
+        }.sortedBy { it.first }.map { it.second }
+
+    private fun dismissedAt(id: String): Int? = db.appStateQueries.get(KEY_DISMISS + id).executeAsOneOrNull()?.toIntOrNull()
+
+    private fun hasRecords(accountId: String, recurringId: String) =
+        q.recurringTxns(accountId).executeAsList().any { it.id.startsWith("$recurringId|") }
 
     private fun Recurring.toTxn(date: LocalDate, timeZone: String) = TransactionDraft(
         kind = kind, amountMinor = amountMinor, finAccountId = finAccountId, toFinAccountId = toFinAccountId,
@@ -250,12 +303,14 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
         val state = when {
             deleted != null -> if (deleted) OccurrenceState.SKIPPED else OccurrenceState.RECORDED
             d > today -> OccurrenceState.PLANNED
-            !activeOn(r, d) -> return null // до снятия с паузы — не было и не спрашивается
+            !activeOn(r, d) -> return null // до снятия с паузы или смены срока — не спрашивается
             r.mode == RecurringMode.AUTO -> OccurrenceState.PLANNED // запишется при следующем recordDue
             else -> OccurrenceState.PENDING
         }
-        return Occurrence(r, d, state)
+        return Occurrence(r, d, state, end(r, d))
     }
+
+    private fun end(r: Recurring, d: LocalDate) = if (r.windowDays > 0) d.plus(DatePeriod(days = r.windowDays)) else d
 
     private fun activeOn(r: Recurring, d: LocalDate) = r.activeFrom == null || d >= r.activeFrom
 
@@ -265,10 +320,31 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
 
     private fun dates(r: Recurring): Sequence<LocalDate> {
         val rule = RRule.parse(r.rrule) ?: return sequenceOf(r.startDate).filter { r.endDate == null || it <= r.endDate }
-        // «1-е следующего»: правило даёт последний день короткого месяца — сдвиг на день вперёд.
-        val raw = Recurrence.dates(rule, r.startDate)
-        val shifted = if (r.shortMonth == ShortMonth.NEXT) raw.map { if (it.day < r.startDate.day) it.plus(DatePeriod(days = 1)) else it } else raw
-        return shifted.let { s -> r.endDate?.let { end -> s.takeWhile { it <= end } } ?: s }
+        val all = if (countsDays(rule)) dayCountDates(rule, r.startDate) else Recurrence.dates(rule, r.startDate)
+        return r.endDate?.let { end -> all.takeWhile { it <= end } } ?: all
+    }
+
+    /** Простое «каждый N-й месяц / год» — число отсчитывается от 1-го, лишние дни уходят в следующий месяц. */
+    private fun countsDays(rule: RRule) = (rule.freq == Frequency.MONTHLY || rule.freq == Frequency.YEARLY) &&
+        rule.byDay.isEmpty() && rule.byMonthDay.isEmpty() && rule.byMonth.isEmpty() && rule.bySetPos.isEmpty()
+
+    /**
+     * Перенос 29–31-го «по счёту дней» (решение пользователя): в феврале 29 → 1, 30 → 2, 31 → 3
+     * марта; в 30-дневном месяце 31 → 1-е. Так же 29 февраля у ежегодного → 1 марта.
+     */
+    private fun dayCountDates(rule: RRule, start: LocalDate): Sequence<LocalDate> {
+        val stepMonths = rule.interval * (if (rule.freq == Frequency.YEARLY) 12 else 1)
+        val base = LocalDate(start.year, start.month, 1)
+        val untilDate = when (val u = rule.until) {
+            null -> null
+            is Until.Date -> u.date
+            is Until.Floating -> u.dateTime.date
+            is Until.Utc -> u.instant.toLocalDateTime(TimeZone.UTC).date
+        }
+        val s = generateSequence(0) { it + 1 }
+            .map { k -> base.plus(DatePeriod(months = k * stepMonths)).plus(DatePeriod(days = start.day - 1)) }
+            .takeWhile { untilDate == null || it <= untilDate }
+        return rule.count?.let { s.take(it) } ?: s
     }
 
     private fun validate(accountId: String, d: RecurringDraft) {
@@ -277,6 +353,9 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
         require(d.kind != TxnKind.ADJUSTMENT) { "Корректировка не бывает регулярной" }
         require(RRule.parse(d.rrule) != null) { "Неподдерживаемое правило повтора" }
         require(d.endDate == null || d.endDate >= d.startDate) { "Конец раньше начала" }
+        require(d.windowDays in 0..MAX_WINDOW) { "Разброс — от 0 до $MAX_WINDOW дней" }
+        // День прихода при разбросе заранее неизвестен — записать самому нельзя (решение пользователя).
+        require(d.windowDays == 0 || d.mode == RecurringMode.ASK) { "С разбросом срока платёж только подтверждается" }
         val from = requireNotNull(db.financeQueries.finAccountById(d.finAccountId).executeAsOneOrNull()) { "Нет счёта ${d.finAccountId}" }
         require(from.account_id == accountId && from.deleted == 0L) { "Счёт не принадлежит аккаунту" }
         if (d.kind == TxnKind.TRANSFER) {
@@ -288,18 +367,31 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
     private fun today(): LocalDate =
         Instant.fromEpochMilliseconds(clock.wallMillis()).toLocalDateTime(TimeZone.currentSystemDefault()).date
 
+    private fun RecurringDraft.toModel() = Recurring(
+        id = id ?: "", name = name, kind = kind, amountMinor = amountMinor, finAccountId = finAccountId,
+        toFinAccountId = toFinAccountId, categoryId = categoryId, rrule = rrule, startDate = startDate, endDate = endDate,
+        mode = mode, remindDays = remindDays, paused = paused, activeFrom = null, windowDays = windowDays,
+    )
+
     private fun io.github.nullbrash.quazio.core.db.Recurring.toModel() = Recurring(
         id = id, name = name, kind = TxnKind.fromDb(kind), amountMinor = amount_minor, finAccountId = fin_account_id,
         toFinAccountId = to_fin_account_id, categoryId = category_id, rrule = rrule, startDate = LocalDate.parse(start_date),
         endDate = end_date?.let(LocalDate::parse), mode = RecurringMode.fromDb(mode), remindDays = remind_days.toInt(),
-        paused = paused != 0L, activeFrom = active_from?.let(LocalDate::parse), shortMonth = ShortMonth.fromDb(short_month),
+        paused = paused != 0L, activeFrom = active_from?.let(LocalDate::parse), windowDays = window_days.toInt(),
     )
 
     companion object {
         fun occurrenceId(recurringId: String, date: LocalDate) = "$recurringId|$date"
 
+        const val MAX_WINDOW = 14
+        private const val MIN_RECORDS = 3
+        private const val LAST_RECORDS = 6
         private const val T_RECURRING = "recurring"
         private const val T_TXN = "txn"
+        private const val KEY_DISMISS = "finance.recurring_dismiss."
         private fun flag(b: Boolean) = if (b) "1" else "0"
+
+        /** Шаблон LIKE «начинается с» с экранированием % и _. */
+        private fun likePrefix(s: String) = s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     }
 }

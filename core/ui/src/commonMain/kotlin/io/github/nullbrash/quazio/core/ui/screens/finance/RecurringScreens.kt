@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,15 +77,22 @@ import io.github.nullbrash.quazio.core.ui.res.rec_record
 import io.github.nullbrash.quazio.core.ui.res.rec_skip
 import io.github.nullbrash.quazio.core.ui.res.rec_quarterly
 import io.github.nullbrash.quazio.core.ui.res.rec_repeat
-import io.github.nullbrash.quazio.core.ui.res.rec_short_last
-import io.github.nullbrash.quazio.core.ui.res.rec_short_last_feb
-import io.github.nullbrash.quazio.core.ui.res.rec_short_need
-import io.github.nullbrash.quazio.core.ui.res.rec_short_next
-import io.github.nullbrash.quazio.core.ui.res.rec_short_next_feb
-import io.github.nullbrash.quazio.core.ui.res.rec_short_skip
-import io.github.nullbrash.quazio.core.ui.res.rec_short_skip_feb
-import io.github.nullbrash.quazio.core.ui.res.rec_short_title
-import io.github.nullbrash.quazio.core.ui.res.rec_short_title_feb
+import io.github.nullbrash.quazio.core.ui.res.rec_overdue
+import io.github.nullbrash.quazio.core.ui.res.rec_expected_until
+import io.github.nullbrash.quazio.core.ui.res.rec_suggest_short
+import io.github.nullbrash.quazio.core.ui.res.rec_suggest_later
+import io.github.nullbrash.quazio.core.ui.res.rec_suggest_apply
+import io.github.nullbrash.quazio.core.ui.res.rec_suggest
+import io.github.nullbrash.quazio.core.ui.res.rec_confirm_no
+import io.github.nullbrash.quazio.core.ui.res.rec_confirm_yes
+import io.github.nullbrash.quazio.core.ui.res.rec_confirm_question
+import io.github.nullbrash.quazio.core.ui.res.rec_confirm_text
+import io.github.nullbrash.quazio.core.ui.res.rec_confirm_title
+import io.github.nullbrash.quazio.core.ui.res.rec_preview
+import io.github.nullbrash.quazio.core.ui.res.rec_window_auto_off
+import io.github.nullbrash.quazio.core.ui.res.rec_window_range
+import io.github.nullbrash.quazio.core.ui.res.rec_window_one
+import io.github.nullbrash.quazio.core.ui.res.rec_window
 import io.github.nullbrash.quazio.core.ui.res.rec_title
 import io.github.nullbrash.quazio.core.ui.res.rec_until
 import io.github.nullbrash.quazio.core.ui.res.rec_weekly
@@ -106,7 +113,8 @@ import io.github.nullbrash.quazio.feature.finance.formatAmountForEdit
 import io.github.nullbrash.quazio.feature.finance.Recurring
 import io.github.nullbrash.quazio.feature.finance.RecurringDraft
 import io.github.nullbrash.quazio.feature.finance.RecurringMode
-import io.github.nullbrash.quazio.feature.finance.ShortMonth
+import io.github.nullbrash.quazio.feature.finance.RecurringService
+import io.github.nullbrash.quazio.feature.finance.WindowSuggestion
 import io.github.nullbrash.quazio.feature.finance.TransactionDraft
 import io.github.nullbrash.quazio.feature.finance.TxnKind
 import io.github.nullbrash.quazio.feature.finance.formatMoney
@@ -134,31 +142,26 @@ internal enum class PaymentRepeat(val label: StringResource, val months: Int?) {
     YEARLY(Res.string.rec_yearly, 12),
 }
 
-/** Бывают ли месяцы (у ежегодного — годы) без числа первого платежа: 29–31-е, 29 февраля. */
-internal fun PaymentRepeat.hasShortMonths(start: LocalDate): Boolean = when (this) {
-    PaymentRepeat.WEEKLY -> false
-    PaymentRepeat.YEARLY -> start.month.ordinal == 1 && start.day == 29
-    else -> start.day > 28
+/** RRULE повтора; 29–31-е в коротких месяцах сервис сам переносит вперёд «по счёту дней». */
+internal fun PaymentRepeat.rrule(): String = when (this) {
+    PaymentRepeat.WEEKLY -> "FREQ=WEEKLY"
+    PaymentRepeat.YEARLY -> "FREQ=YEARLY"
+    else -> "FREQ=MONTHLY" + if (months!! > 1) ";INTERVAL=$months" else ""
 }
 
-/**
- * RRULE повтора от даты первого платежа. Короткий месяц — как выбрал пользователь: «последний
- * день» и «1-е следующего» — правилом BYMONTHDAY=28..d;BYSETPOS=-1 (сдвиг на 1-е делает сервис),
- * «пропустить» — обычное правило (так по RFC 5545).
- */
-internal fun PaymentRepeat.rrule(start: LocalDate, short: ShortMonth?): String {
-    if (this == PaymentRepeat.WEEKLY) return "FREQ=WEEKLY"
-    val n = months!!
-    val base = if (n == 12) "FREQ=YEARLY" else "FREQ=MONTHLY" + if (n > 1) ";INTERVAL=$n" else ""
-    if (!hasShortMonths(start) || short == null || short == ShortMonth.SKIP) return base
-    val days = (28..start.day).joinToString(",")
-    return if (n == 12) "$base;BYMONTH=2;BYMONTHDAY=$days;BYSETPOS=-1" else "$base;BYMONTHDAY=$days;BYSETPOS=-1"
-}
-
-internal fun paymentRepeatOf(rrule: String, start: LocalDate, short: ShortMonth?): PaymentRepeat? =
-    PaymentRepeat.entries.firstOrNull { it.rrule(start, short) == rrule }
+internal fun paymentRepeatOf(rrule: String): PaymentRepeat? = PaymentRepeat.entries.firstOrNull { it.rrule() == rrule }
 
 internal fun shortDate(d: LocalDate) = dayMonth(LocalDateTime(d, LocalTime(0, 0)))
+
+/** «20–25 октября», «29 января – 1 февраля», один день — «20 октября». */
+internal fun rangeText(a: LocalDate, b: LocalDate): String = when {
+    a == b -> shortDate(a)
+    a.month == b.month && a.year == b.year -> "${a.day}–${shortDate(b)}"
+    else -> "${shortDate(a)} – ${shortDate(b)}"
+}
+
+/** «21–24» — срок числами (для подсказки и списка). */
+internal fun daysText(a: LocalDate, b: LocalDate) = if (a == b) "${a.day}" else "${a.day}–${b.day}"
 
 @Composable
 internal fun RecurringListScreen(
@@ -168,9 +171,11 @@ internal fun RecurringListScreen(
     onOpen: (String?) -> Unit,
 ) {
     SystemBack(onBack = onBack)
-    var list by remember { mutableStateOf<List<Pair<Recurring, LocalDate?>>?>(null) }
+    var list by remember { mutableStateOf<List<Triple<Recurring, LocalDate?, WindowSuggestion?>>?>(null) }
     LaunchedEffect(Unit) {
-        list = withContext(Dispatchers.IO) { services.finance.recurring.let { r -> r.all(data.accountId).map { it to r.next(it) } } }
+        list = withContext(Dispatchers.IO) {
+            services.finance.recurring.let { s -> s.all(data.accountId).map { Triple(it, s.next(it), s.suggestWindow(data.accountId, it)) } }
+        }
     }
     val categories = data.categories.associateBy { it.id }
     Column(Modifier.fillMaxSize()) {
@@ -185,12 +190,12 @@ internal fun RecurringListScreen(
         val items = list ?: return@Column
         if (items.isEmpty()) Text(stringResource(Res.string.rec_empty), modifier = Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
         LazyColumn(Modifier.fillMaxSize()) {
-            items(items, key = { it.first.id }) { (r, next) ->
-                val repeat = paymentRepeatOf(r.rrule, r.startDate, r.shortMonth)?.label ?: Res.string.rec_custom
+            items(items, key = { it.first.id }) { (r, next, suggestion) ->
+                val repeat = paymentRepeatOf(r.rrule)?.label ?: Res.string.rec_custom
                 val status = when {
                     r.paused -> stringResource(Res.string.rec_paused)
                     next == null -> stringResource(Res.string.rec_finished)
-                    else -> stringResource(Res.string.rec_next, shortDate(next))
+                    else -> stringResource(Res.string.rec_next, rangeText(next, next.plus(DatePeriod(days = r.windowDays))))
                 }
                 Row(Modifier.fillMaxWidth().clickable { onOpen(r.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     ColorDot(categories[r.categoryId]?.color)
@@ -200,6 +205,12 @@ internal fun RecurringListScreen(
                             "${stringResource(repeat)} · $status · ${stringResource(if (r.mode == RecurringMode.AUTO) Res.string.rec_mode_auto else Res.string.rec_mode_ask)}",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        suggestion?.let { sg ->
+                            Text(
+                                stringResource(Res.string.rec_suggest_short, daysText(r.startDate.plus(DatePeriod(days = sg.fromOffset)), r.startDate.plus(DatePeriod(days = sg.toOffset)))),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                     val sign = when (r.kind) { TxnKind.INCOME -> "+"; TxnKind.EXPENSE -> "−"; else -> "" }
                     Text(sign + formatMoney(Money.rub(r.amountMinor)), style = MaterialTheme.typography.bodyLarge, color = if (r.kind == TxnKind.INCOME) INCOME_COLOR else MaterialTheme.colorScheme.onSurface)
@@ -251,7 +262,10 @@ internal fun RecurringEditor(
     var auto by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var remindDays by remember { mutableStateOf(1) }
-    var shortMonth by remember { mutableStateOf<ShortMonth?>(null) }
+    var windowDays by remember { mutableStateOf(0) }
+    var suggestion by remember { mutableStateOf<WindowSuggestion?>(null) }
+    var preview by remember { mutableStateOf<List<LocalDate>>(emptyList()) }
+    var confirmShift by remember { mutableStateOf<RecurringDraft?>(null) }
     var touchedCategory by remember { mutableStateOf(from?.categoryId != null) }
     var error by remember { mutableStateOf<String?>(null) }
     var showCalc by remember { mutableStateOf(false) }
@@ -270,8 +284,9 @@ internal fun RecurringEditor(
         categoryId = r.categoryId
         startDate = r.startDate
         endDate = r.endDate
-        shortMonth = r.shortMonth
-        repeat = paymentRepeatOf(r.rrule, r.startDate, r.shortMonth)
+        windowDays = r.windowDays
+        repeat = paymentRepeatOf(r.rrule)
+        suggestion = withContext(Dispatchers.IO) { finance.recurring.suggestWindow(accountId, r) }
         customRule = if (repeat == null) r.rrule else null
         auto = r.mode == RecurringMode.AUTO
         paused = r.paused
@@ -286,18 +301,34 @@ internal fun RecurringEditor(
         val suggested = withContext(Dispatchers.IO) { finance.suggestCategory(accountId, name, kind == TxnKind.INCOME, today) }
         if (suggested != null && !touchedCategory) categoryId = suggested
     }
+    val rule = repeat?.rrule() ?: customRule ?: PaymentRepeat.MONTHLY.rrule()
+    // Как лягут ближайшие платежи — до сохранения (перенос 29–31-го виден сразу).
+    LaunchedEffect(rule, startDate, endDate, windowDays, finAccountId, loaded) {
+        val account = finAccountId ?: return@LaunchedEffect
+        if (!loaded) return@LaunchedEffect
+        preview = withContext(Dispatchers.IO) {
+            runCatching {
+                finance.recurring.preview(RecurringDraft(name = "-", kind = kind, amountMinor = 1, finAccountId = account, rrule = rule,
+                    startDate = startDate, endDate = endDate, windowDays = windowDays), PREVIEW_COUNT)
+            }.getOrDefault(emptyList())
+        }
+    }
     if (!loaded) return
 
     val categoryKind = if (kind == TxnKind.INCOME) CategoryKind.INCOME else CategoryKind.EXPENSE
     val node = categories.firstOrNull { it.id == categoryId }
 
-    val needsShort = repeat?.hasShortMonths(startDate) == true
+    fun store(draft: RecurringDraft) {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { finance.recurring.save(accountId, draft) } }
+            result.onSuccess { onClose(true) }.onFailure { error = it.message }
+        }
+    }
 
     fun save() {
         scope.launch {
             error = when {
                 name.isBlank() -> getString(Res.string.rec_need_name)
-                needsShort && shortMonth == null -> getString(Res.string.rec_short_need)
                 amountMinor == null || amountMinor!! <= 0 -> getString(Res.string.txn_bad_amount)
                 finAccountId == null -> getString(Res.string.txn_need_account)
                 kind == TxnKind.TRANSFER && (toAccountId == null || toAccountId == finAccountId) -> getString(Res.string.txn_need_to_account)
@@ -306,14 +337,13 @@ internal fun RecurringEditor(
             if (error != null) return@launch
             val draft = RecurringDraft(
                 id = recurringId, name = name, kind = kind, amountMinor = amountMinor!!, finAccountId = finAccountId!!,
-                toFinAccountId = toAccountId, categoryId = categoryId,
-                rrule = repeat?.rrule(startDate, shortMonth) ?: customRule ?: PaymentRepeat.MONTHLY.rrule(startDate, shortMonth),
-                startDate = startDate, endDate = endDate, mode = if (auto) RecurringMode.AUTO else RecurringMode.ASK,
-                remindDays = remindDays, paused = paused,
-                shortMonth = if (needsShort || repeat == null) shortMonth else null,
+                toFinAccountId = toAccountId, categoryId = categoryId, rrule = rule,
+                startDate = startDate, endDate = endDate, mode = if (auto && windowDays == 0) RecurringMode.AUTO else RecurringMode.ASK,
+                remindDays = remindDays, paused = paused, windowDays = windowDays,
             )
-            val result = withContext(Dispatchers.IO) { runCatching { finance.recurring.save(accountId, draft) } }
-            result.onSuccess { onClose(true) }.onFailure { error = it.message }
+            // Есть перенесённые даты (29–31-е) — сначала показать, как лягут, и спросить (решение пользователя).
+            val ahead = withContext(Dispatchers.IO) { runCatching { finance.recurring.preview(draft, CONFIRM_COUNT) }.getOrDefault(emptyList()) }
+            if (repeat != PaymentRepeat.WEEKLY && ahead.any { it.day != startDate.day }) confirmShift = draft else store(draft)
         }
     }
 
@@ -403,32 +433,48 @@ internal fun RecurringEditor(
                 }
             }
 
-            // Куда платёж 29–31-го в месяце без этого числа — спрашиваем явно, без выбора по умолчанию.
-            if (needsShort) {
-                val feb = repeat == PaymentRepeat.YEARLY
-                Column {
-                    Text(
-                        if (feb) stringResource(Res.string.rec_short_title_feb) else stringResource(Res.string.rec_short_title, startDate.day),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    listOf(
-                        ShortMonth.LAST to if (feb) Res.string.rec_short_last_feb else Res.string.rec_short_last,
-                        ShortMonth.NEXT to if (feb) Res.string.rec_short_next_feb else Res.string.rec_short_next,
-                        ShortMonth.SKIP to if (feb) Res.string.rec_short_skip_feb else Res.string.rec_short_skip,
-                    ).forEach { (option, label) ->
-                        Row(Modifier.fillMaxWidth().clickable { shortMonth = option; error = null }, verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = shortMonth == option, onClick = { shortMonth = option; error = null })
-                            Text(stringResource(label))
-                        }
+            // Разброс: деньги приходят «в 20-х» — срок «с 20 по 25» (пожелание пользователя).
+            LabeledPicker(stringResource(Res.string.rec_window), windowLabel(startDate, windowDays)) { dismiss ->
+                (0..RecurringService.MAX_WINDOW).forEach { n -> MenuOption(windowLabel(startDate, n)) { windowDays = n; dismiss() } }
+            }
+            if (preview.isNotEmpty()) {
+                Text(
+                    stringResource(Res.string.rec_preview, preview.joinToString(", ") { rangeText(it, it.plus(DatePeriod(days = windowDays))) }),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            suggestion?.let { sg ->
+                val a = startDate.plus(DatePeriod(days = sg.fromOffset))
+                val b = startDate.plus(DatePeriod(days = sg.toOffset))
+                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Text(stringResource(Res.string.rec_suggest, daysText(a, b), sg.basedOn), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            scope.launch {
+                                val r = withContext(Dispatchers.IO) { finance.recurring.byId(recurringId!!)?.let { finance.recurring.applySuggestion(accountId, it, sg); finance.recurring.byId(recurringId) } }
+                                if (r != null) { startDate = r.startDate; windowDays = r.windowDays }
+                                suggestion = null
+                            }
+                        }) { Text(stringResource(Res.string.rec_suggest_apply)) }
+                        TextButton(onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { finance.recurring.byId(recurringId!!)?.let { finance.recurring.dismissSuggestion(accountId, it) } }
+                                suggestion = null
+                            }
+                        }) { Text(stringResource(Res.string.rec_suggest_later)) }
                     }
                 }
             }
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(Res.string.rec_auto), modifier = Modifier.weight(1f))
-                    Switch(auto, { auto = it })
+                    // С разбросом день прихода неизвестен — записать самому нельзя (решение пользователя).
+                    Switch(auto && windowDays == 0, { auto = it }, enabled = windowDays == 0)
                 }
-                Text(stringResource(Res.string.rec_auto_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(if (windowDays > 0) Res.string.rec_window_auto_off else Res.string.rec_auto_hint),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (recurringId != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -456,7 +502,8 @@ internal fun RecurringEditor(
         )
     }
     pickDate?.let { which ->
-        val initial = if (which == "end") endDate ?: startDate else startDate
+        // «До» — через год от первого платежа: подтверждение без правки не делает платёж разовым.
+        val initial = if (which == "end") endDate ?: startDate.plus(DatePeriod(years = 1)) else startDate
         val state = rememberDatePickerState(initialSelectedDateMillis = toMillis(LocalDateTime(initial, LocalTime(0, 0)), TimeZone.UTC))
         DatePickerDialog(
             onDismissRequest = { pickDate = null },
@@ -471,6 +518,25 @@ internal fun RecurringEditor(
             },
             dismissButton = { TextButton(onClick = { pickDate = null }) { Text(stringResource(Res.string.action_cancel)) } },
         ) { DatePicker(state) }
+    }
+    confirmShift?.let { draft ->
+        AlertDialog(
+            onDismissRequest = { confirmShift = null },
+            title = { Text(stringResource(Res.string.rec_confirm_title)) },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(Res.string.rec_confirm_text, startDate.day))
+                    preview.forEach { d ->
+                        val moved = d.day != startDate.day
+                        Text("• " + rangeText(d, d.plus(DatePeriod(days = windowDays))) + if (moved) "  ←" else "",
+                            color = if (moved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                    }
+                    Text(stringResource(Res.string.rec_confirm_question), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                }
+            },
+            confirmButton = { TextButton(onClick = { confirmShift = null; store(draft) }) { Text(stringResource(Res.string.rec_confirm_yes)) } },
+            dismissButton = { TextButton(onClick = { confirmShift = null }) { Text(stringResource(Res.string.rec_confirm_no)) } },
+        )
     }
     if (confirmDelete) {
         AlertDialog(
@@ -497,13 +563,23 @@ internal fun PendingPayments(
     onRecord: (Occurrence) -> Unit,
     onSkip: (Occurrence) -> Unit,
 ) {
+    val today = remember { localDateTime(nowMillis(), currentZone().id).date }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(stringResource(Res.string.rec_pending_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         pending.forEach { o ->
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(o.recurring.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${shortDate(o.date)} · ${formatMoney(Money.rub(o.recurring.amountMinor))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val term = when {
+                        o.overdue(today) -> stringResource(Res.string.rec_overdue)
+                        o.windowEnd > o.date -> stringResource(Res.string.rec_expected_until, o.windowEnd.day)
+                        else -> null
+                    }
+                    Text(
+                        listOfNotNull(shortDate(o.date), term, formatMoney(Money.rub(o.recurring.amountMinor))).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (o.overdue(today)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 TextButton(onClick = { onSkip(o) }) { Text(stringResource(Res.string.rec_skip)) }
                 Button(onClick = { onRecord(o) }) { Text(stringResource(Res.string.rec_record)) }
@@ -512,3 +588,10 @@ internal fun PendingPayments(
     }
     HorizontalDivider()
 }
+
+@Composable
+private fun windowLabel(start: LocalDate, days: Int): String =
+    if (days == 0) stringResource(Res.string.rec_window_one) else stringResource(Res.string.rec_window_range, start.day, start.plus(DatePeriod(days = days)).day)
+
+private const val PREVIEW_COUNT = 6
+private const val CONFIRM_COUNT = 12

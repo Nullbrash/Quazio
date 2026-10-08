@@ -1,12 +1,13 @@
 insertRecurring:
 INSERT INTO recurring(id, account_id, name, kind, amount_minor, currency, fin_account_id, to_fin_account_id, category_id,
-    rrule, start_date, end_date, mode, remind_days, paused, active_from, short_month, hlc)
+    rrule, start_date, end_date, mode, remind_days, paused, active_from, window_days, hlc)
 VALUES (?, ?, ?, ?, ?, 'RUB', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateRecurring:
 UPDATE recurring SET name = :name, kind = :kind, amount_minor = :amount, fin_account_id = :finAccountId,
     to_fin_account_id = :toFinAccountId, category_id = :categoryId, rrule = :rrule, start_date = :startDate,
-    end_date = :endDate, mode = :mode, remind_days = :remindDays, paused = :paused, active_from = :activeFrom, short_month = :shortMonth, hlc = :hlc
+    end_date = :endDate, mode = :mode, remind_days = :remindDays, paused = :paused, active_from = :activeFrom,
+    window_days = :windowDays, hlc = :hlc
 WHERE id = :id;
 
 setRecurringDeleted:
@@ -21,6 +22,11 @@ SELECT * FROM recurring WHERE account_id = ? AND deleted = 0 ORDER BY name;
 -- Операции платежей (и удалённые: удалённая или пропущенная больше не спрашивается).
 recurringTxns:
 SELECT id, deleted FROM txn WHERE account_id = ? AND source = 'recurring';
+
+-- Записанные операции одного платежа: по ним видно, в какие дни он на деле приходит.
+recordedOf:
+SELECT id, occurred_at, tz FROM txn
+WHERE account_id = :accountId AND source = 'recurring' AND deleted = 0 AND id LIKE :prefix ESCAPE '\';
 
 insertTxnWithId:
 INSERT INTO txn(id, account_id, kind, amount_minor, currency, fin_account_id, to_fin_account_id, category_id, merchant_id,
