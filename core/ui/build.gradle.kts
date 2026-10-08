@@ -30,6 +30,7 @@ kotlin {
             api(projects.core.lock)
             api(projects.feature.finance)
             api(projects.feature.calendar)
+            api(projects.feature.reminders)
             implementation(libs.jb.lifecycle.runtime.compose)
             implementation(libs.compose.material.icons.core)
             implementation(libs.compose.components.resources)

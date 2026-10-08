@@ -6,6 +6,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.Tray
+import androidx.compose.ui.window.rememberTrayState
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import io.github.nullbrash.quazio.feature.reminders.ProfileStore
+import io.github.nullbrash.quazio.feature.reminders.ReminderService
+import io.github.nullbrash.quazio.feature.reminders.ReminderSettings
 import io.github.nullbrash.quazio.core.accounts.AccountService
 import io.github.nullbrash.quazio.core.accounts.DeviceClock
 import io.github.nullbrash.quazio.feature.finance.FinanceService
@@ -37,9 +45,13 @@ private val services: AppServices by lazy {
     val clock = DeviceClock(db, System::currentTimeMillis)
     SessionLockWatcher.start(onLocked = lock::lockNow)
     val state = db.appStateStore()
+    val accounts = AccountService(db, clock)
+    val finance = FinanceService(db, clock)
+    val calendar = LinkedCalendars(state, IcalHttpFetcher(appVersion), System::currentTimeMillis)
+    val calendarPrefs = CalendarPrefs(state)
     val services = AppServices(
-        accounts = AccountService(db, clock),
-        finance = FinanceService(db, clock),
+        accounts = accounts,
+        finance = finance,
         vault = PasswordVault(db, System::currentTimeMillis),
         lock = lock,
         deviceName = System.getenv("COMPUTERNAME") ?: "ПК",
@@ -47,14 +59,22 @@ private val services: AppServices by lazy {
         // На ПК пароль Quazio необязателен (решение пользователя): база и так под ключом Windows.
         passwordRequired = false,
         // Календари Google по секретным ссылкам — единственное, ради чего ПК-версия выходит в сеть.
-        calendar = LinkedCalendars(state, IcalHttpFetcher(appVersion), System::currentTimeMillis),
-        calendarPrefs = CalendarPrefs(state),
+        calendar = calendar,
+        calendarPrefs = calendarPrefs,
+        reminders = ReminderService(ProfileStore(db), ReminderSettings(state), state, finance.recurring,
+            { accounts.current().id }, calendar, calendarPrefs),
     )
     DevStress.seedIfRequested(services)
     services
 }
 
+private val reminderPlatform = DesktopReminders()
+
 fun main() = application {
+    // Значок в области уведомлений — только чтобы показывать уведомления Windows, пока окно открыто.
+    val trayState = rememberTrayState()
+    Tray(icon = rememberVectorPainter(Icons.Filled.DateRange), state = trayState, tooltip = "Quazio")
+    LaunchedEffect(Unit) { reminderPlatform.run({ services.reminders!! }, trayState) }
     Window(
         onCloseRequest = ::exitApplication,
         title = "Quazio",
@@ -66,6 +86,7 @@ fun main() = application {
             versionName = appVersion,
             openServices = { services },
             fileSaver = fileSaver,
+            reminderPlatform = reminderPlatform,
         )
     }
 }

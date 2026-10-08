@@ -1,0 +1,12 @@
+profiles:
+SELECT * FROM reminder_profile ORDER BY builtin DESC, sort_key, name;
+
+profileById:
+SELECT * FROM reminder_profile WHERE id = ?;
+
+upsertProfile:
+INSERT OR REPLACE INTO reminder_profile(id, name, kind, sound_uri, ramp_seconds, vibrate, snooze_minutes, builtin, sort_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteProfile:
+DELETE FROM reminder_profile WHERE id = ? AND builtin = 0;

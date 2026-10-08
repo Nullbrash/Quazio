@@ -77,6 +77,9 @@ import io.github.nullbrash.quazio.core.ui.res.rec_record
 import io.github.nullbrash.quazio.core.ui.res.rec_skip
 import io.github.nullbrash.quazio.core.ui.res.rec_quarterly
 import io.github.nullbrash.quazio.core.ui.res.rec_repeat
+import io.github.nullbrash.quazio.core.ui.res.rec_remind
+import io.github.nullbrash.quazio.core.ui.res.rec_remind_before
+import io.github.nullbrash.quazio.core.ui.res.rec_remind_day
 import io.github.nullbrash.quazio.core.ui.res.rec_overdue
 import io.github.nullbrash.quazio.core.ui.res.rec_expected_until
 import io.github.nullbrash.quazio.core.ui.res.rec_suggest_short
@@ -374,7 +377,8 @@ internal fun RecurringEditor(
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // На узком телефоне поля не влезают в ряд — переносятся (иначе кнопка сплющивалась в столбик).
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LabeledPicker(stringResource(if (kind == TxnKind.TRANSFER) Res.string.txn_from_account else Res.string.txn_account), ownAccounts.firstOrNull { it.id == finAccountId }?.name ?: "—") { dismiss ->
                     ownAccounts.forEach { a -> MenuOption(a.name) { finAccountId = a.id; dismiss() } }
                 }
@@ -414,7 +418,7 @@ internal fun RecurringEditor(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LabeledPicker(stringResource(Res.string.rec_repeat), stringResource(repeat?.label ?: Res.string.rec_custom)) { dismiss ->
                     PaymentRepeat.entries.forEach { p -> MenuOption(stringResource(p.label)) { repeat = p; dismiss() } }
                 }
@@ -433,9 +437,15 @@ internal fun RecurringEditor(
                 }
             }
 
-            // Разброс: деньги приходят «в 20-х» — срок «с 20 по 25» (пожелание пользователя).
-            LabeledPicker(stringResource(Res.string.rec_window), windowLabel(startDate, windowDays)) { dismiss ->
-                (0..RecurringService.MAX_WINDOW).forEach { n -> MenuOption(windowLabel(startDate, n)) { windowDays = n; dismiss() } }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Разброс: деньги приходят «в 20-х» — срок «с 20 по 25» (пожелание пользователя).
+                LabeledPicker(stringResource(Res.string.rec_window), windowLabel(startDate, windowDays)) { dismiss ->
+                    (0..RecurringService.MAX_WINDOW).forEach { n -> MenuOption(windowLabel(startDate, n)) { windowDays = n; dismiss() } }
+                }
+                // Напоминание накануне — за сколько дней (решение пользователя: 0/1/2/3/7, по умолчанию 1).
+                LabeledPicker(stringResource(Res.string.rec_remind), remindLabel(remindDays)) { dismiss ->
+                    listOf(0, 1, 2, 3, 7).forEach { n -> MenuOption(remindLabel(n)) { remindDays = n; dismiss() } }
+                }
             }
             if (preview.isNotEmpty()) {
                 Text(
@@ -595,3 +605,7 @@ private fun windowLabel(start: LocalDate, days: Int): String =
 
 private const val PREVIEW_COUNT = 6
 private const val CONFIRM_COUNT = 12
+
+@Composable
+private fun remindLabel(days: Int): String =
+    if (days == 0) stringResource(Res.string.rec_remind_day) else stringResource(Res.string.rec_remind_before, days)

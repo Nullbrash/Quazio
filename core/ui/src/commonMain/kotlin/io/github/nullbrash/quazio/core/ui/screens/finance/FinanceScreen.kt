@@ -147,7 +147,11 @@ fun FinanceScreen(
     /** Платёж, открытый из календаря. */
     openRecurring: String? = null,
     onRecurringHandled: () -> Unit = {},
+    /** «Открыть» в уведомлении о платеже: окно «Записать» этого повторения. */
+    openRecord: Pair<String, kotlinx.datetime.LocalDate>? = null,
+    onRecordHandled: () -> Unit = {},
 ) {
+    val reminderPlatform = io.github.nullbrash.quazio.core.ui.LocalReminderPlatform.current
     var month by remember { mutableStateOf(currentMonth()) }
     var reload by remember { mutableIntStateOf(0) }
     var data by remember { mutableStateOf<FinanceData?>(null) }
@@ -208,6 +212,12 @@ fun FinanceScreen(
         scope.launch { openQuick(text) }
     }
 
+    LaunchedEffect(openRecord) {
+        val (id, date) = openRecord ?: return@LaunchedEffect
+        val r = withContext(Dispatchers.IO) { services.finance.recurring.byId(id) }
+        onRecordHandled()
+        if (r != null) view = FinanceView.RecordOccurrence(Occurrence(r, date, io.github.nullbrash.quazio.feature.finance.OccurrenceState.PENDING))
+    }
     LaunchedEffect(openRecurring) {
         if (openRecurring != null) {
             view = FinanceView.RecurringEdit(openRecurring, null)
@@ -231,7 +241,7 @@ fun FinanceScreen(
         }
         is FinanceView.RecurringEdit -> RecurringEditor(services, d, v.id, v.from) { changed ->
             view = if (v.from != null) FinanceView.Main else FinanceView.Recurring
-            if (changed) reload++
+            if (changed) { reload++; reminderPlatform?.reschedule() }
         }
         is FinanceView.RecordOccurrence -> {
             val o = v.occurrence
@@ -245,6 +255,7 @@ fun FinanceScreen(
                         result.onFailure { exportMessage = it.message }
                         view = FinanceView.Main
                         reload++
+                        reminderPlatform?.reschedule()
                     }
                 },
                 onClose = { view = FinanceView.Main },

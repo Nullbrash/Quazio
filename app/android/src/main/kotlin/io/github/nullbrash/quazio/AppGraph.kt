@@ -13,6 +13,9 @@ import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.appStateStore
 import io.github.nullbrash.quazio.feature.calendar.AndroidCalendarSource
 import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
+import io.github.nullbrash.quazio.feature.reminders.ProfileStore
+import io.github.nullbrash.quazio.feature.reminders.ReminderService
+import io.github.nullbrash.quazio.feature.reminders.ReminderSettings
 
 /**
  * Службы основного процесса — лениво, при первом обращении (не в Application:
@@ -29,17 +32,25 @@ object AppGraph {
     private fun create(context: Context): AppServices {
         val db = AndroidDatabase.open(context, AndroidKeystoreKeyStore(context))
         val clock = DeviceClock(db, System::currentTimeMillis)
+        val state = db.appStateStore()
+        val accounts = AccountService(db, clock)
+        val finance = FinanceService(db, clock)
+        val calendar = AndroidCalendarSource(context)
+        val calendarPrefs = CalendarPrefs(state)
         return AppServices(
-            accounts = AccountService(db, clock),
-            finance = FinanceService(db, clock),
+            accounts = accounts,
+            finance = finance,
             vault = PasswordVault(db, System::currentTimeMillis),
             lock = AppLock(System::currentTimeMillis),
             deviceName = Build.MODEL,
             platform = "android",
             // Телефон без блокировки экрана: финансы закрыты, пока не задан пароль Quazio.
             passwordRequired = true,
-            calendar = AndroidCalendarSource(context),
-            calendarPrefs = CalendarPrefs(db.appStateStore()),
+            calendar = calendar,
+            calendarPrefs = calendarPrefs,
+            // Напоминания читают календари в фоне — только если доступ дан.
+            reminders = ReminderService(ProfileStore(db), ReminderSettings(state), state, finance.recurring,
+                { accounts.current().id }, calendar, calendarPrefs, calendarReadable = { AndroidCalendarSource.hasPermission(context) }),
         )
     }
 }

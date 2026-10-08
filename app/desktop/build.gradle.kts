@@ -24,6 +24,7 @@ dependencies {
     implementation(projects.core.ui)
     implementation(projects.core.accounts)
     implementation(projects.net.http)
+    implementation(libs.compose.material.icons.core)
     implementation(libs.jna.platform)
     implementation(compose.desktop.currentOs)
 }

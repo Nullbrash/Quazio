@@ -37,6 +37,10 @@ fun SettingsScreen(versionName: String, services: AppServices, deviceAuth: Devic
             CalendarSettingsSection(services.calendar, services.calendarPrefs)
             HorizontalDivider()
         }
+        if (services.reminders != null) {
+            RemindersSection(services)
+            HorizontalDivider()
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.settings_about), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(Res.string.app_name), style = MaterialTheme.typography.headlineSmall)

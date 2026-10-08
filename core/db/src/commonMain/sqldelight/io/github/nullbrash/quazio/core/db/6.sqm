@@ -1,0 +1,16 @@
+-- Профили напоминаний (по образцу будильников AMdroid — решение пользователя): вид,
+-- звук, нарастание громкости, вибрация, «отложить». Настройки этого устройства — звук
+-- задаётся адресом мелодии телефона, на другом устройстве он другой, поэтому без журнала.
+CREATE TABLE reminder_profile (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    -- notification — обычное уведомление; alarm — будильник на весь экран со звуком.
+    kind TEXT NOT NULL CHECK (kind IN ('notification', 'alarm')),
+    -- NULL — звук по умолчанию (у будильника — будильник телефона).
+    sound_uri TEXT,
+    ramp_seconds INTEGER NOT NULL DEFAULT 0,
+    vibrate INTEGER NOT NULL DEFAULT 1,
+    snooze_minutes INTEGER NOT NULL DEFAULT 10,
+    builtin INTEGER NOT NULL DEFAULT 0,
+    sort_key INTEGER NOT NULL DEFAULT 0
+);

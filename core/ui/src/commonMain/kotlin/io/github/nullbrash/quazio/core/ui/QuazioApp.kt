@@ -76,10 +76,14 @@ fun QuazioApp(
     fileSaver: FileSaver? = null,
     incoming: IncomingText? = null,
     calendarAccess: CalendarAccess? = null,
+    reminderPlatform: ReminderPlatform? = null,
+    openRequests: OpenRequests? = null,
 ) = CompositionLocalProvider(
     LocalFileSaver provides fileSaver,
     LocalIncomingText provides incoming,
     LocalCalendarAccess provides calendarAccess,
+    LocalReminderPlatform provides reminderPlatform,
+    LocalOpenRequests provides openRequests,
 ) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
         val startup by produceState<Startup>(Startup.Loading) {
@@ -118,6 +122,21 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
     var calendarJump by remember { mutableStateOf<LocalDate?>(null) }
     // Платёж, нажатый в календаре, — открыть в финансах (под замком).
     var financeJump by remember { mutableStateOf<String?>(null) }
+    // «Открыть» в уведомлении о платеже — окно «Записать» в финансах (под замком).
+    var recordJump by remember { mutableStateOf<OpenRequest.RecordPayment?>(null) }
+    val openRequests = LocalOpenRequests.current
+    val openRequest = openRequests?.request?.collectAsState()?.value
+    LaunchedEffect(openRequest) {
+        when (val r = openRequest) {
+            null -> Unit
+            is OpenRequest.RecordPayment -> { recordJump = r; current = Destination.FINANCE }
+            is OpenRequest.CalendarDay -> { if (services.calendar != null) { calendarJump = r.date; current = Destination.CALENDAR } }
+        }
+        if (openRequest != null) openRequests.consume()
+    }
+    // Напоминания живут своей жизнью; при открытии Quazio — пересчитать, когда проснуться.
+    val reminderPlatform = LocalReminderPlatform.current
+    LaunchedEffect(Unit) { reminderPlatform?.reschedule() }
     val openPayment: (String) -> Unit = { financeJump = it; current = Destination.FINANCE }
     // События календаря помнятся между переключениями разделов — вкладка открывается без пустого кадра.
     val calendarCache = remember { CalendarCache() }
@@ -158,7 +177,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                 },
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
-                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment)
+                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment, recordJump, { recordJump = null })
                 }
             }
 
@@ -175,7 +194,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                             )
                         }
                     }
-                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment) }
+                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment, recordJump, { recordJump = null }) }
                 }
             }
         }
@@ -195,12 +214,15 @@ private fun DestinationContent(
     financeJump: String?,
     onFinanceJumpHandled: () -> Unit,
     openPayment: (String) -> Unit,
+    recordJump: OpenRequest.RecordPayment?,
+    onRecordJumpHandled: () -> Unit,
 ) {
     val screen: @Composable () -> Unit = {
         when (destination) {
             Destination.FINANCE -> FinanceScreen(
                 services, onOpenCalendar = if (services.calendar != null) openCalendar else null,
                 openRecurring = financeJump, onRecurringHandled = onFinanceJumpHandled,
+                openRecord = recordJump?.let { it.recurringId to it.date }, onRecordHandled = onRecordJumpHandled,
             )
             Destination.CALENDAR -> {
                 val source = services.calendar
