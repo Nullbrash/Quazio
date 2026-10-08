@@ -88,6 +88,20 @@ class CalendarScreenUiTest {
     }
 
     @Test
+    fun allDayEventsDoNotMoveDialAndDayButtons() = runComposeUiTest {
+        setContent { MaterialTheme { CalendarScreen(FakeSource(), prefs) } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Отпуск")).fetchSemanticsNodes().isNotEmpty() }
+        val dialToday = onNodeWithContentDescription("Циферблат дня").fetchSemanticsNode().boundsInRoot.top
+        val buttonToday = onNodeWithContentDescription("Следующий день").fetchSemanticsNode().boundsInRoot.top
+        // Весь день — под кнопками дней, а не над циферблатом.
+        assertTrue(onNodeWithText("Отпуск").fetchSemanticsNode().boundsInRoot.top > buttonToday)
+        onNodeWithContentDescription("Следующий день").performClick() // завтра событий на весь день нет
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Завтрашнее")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(dialToday, onNodeWithContentDescription("Циферблат дня").fetchSemanticsNode().boundsInRoot.top)
+        assertEquals(buttonToday, onNodeWithContentDescription("Следующий день").fetchSemanticsNode().boundsInRoot.top)
+    }
+
+    @Test
     fun newEventGoesToTheCalendarForNewEvents() = runComposeUiTest {
         val source = FakeSource()
         setContent { MaterialTheme { CalendarScreen(source, prefs) } }

@@ -2,6 +2,9 @@ package io.github.nullbrash.quazio.core.ui.screens.calendar
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -319,14 +322,8 @@ private fun DayView(
     val at = millisToLocal(cursor, zone)
     val allDayText = stringResource(Res.string.cal_all_day)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-        item {
-            val allDay = dayEvents.filter { it.allDay }
-            if (allDay.isNotEmpty()) {
-                FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    allDay.forEach { e -> AssistChip(onClick = { onOpen(e) }, label = { Text(e.title) }, leadingIcon = { ColorDot(e.color) }) }
-                }
-            }
-        }
+        // Над циферблатом ничего не появляется и не исчезает: циферблат и кнопки дней всегда
+        // на одном месте (события на весь день сдвигали их — нажимали не туда).
         item {
             Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
                 DayDial(
@@ -355,10 +352,21 @@ private fun DayView(
             }
         }
         item { HorizontalDivider() }
-        if (dayEvents.none { !it.allDay }) item {
+        // События на весь день — чипами в начале списка, под кнопками.
+        val allDay = dayEvents.filter { it.allDay }
+        if (allDay.isNotEmpty()) item {
+            FlowRow(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(allDayText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterVertically).padding(end = 4.dp))
+                allDay.forEach { e -> AssistChip(onClick = { onOpen(e) }, label = { Text(e.title.ifBlank { "—" }, maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingIcon = { ColorDot(e.color) }) }
+            }
+        }
+        if (dayEvents.isEmpty()) item {
             Text(stringResource(Res.string.cal_no_events), modifier = Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
         }
-        // События на весь день — чипами над циферблатом; в списке — только со временем.
         dayEvents.filter { !it.allDay }.forEach { e ->
             item {
                 EventRow(e, e.timeText(date, zone, allDayText), calendarName[e.calendarId], onClick = { onOpen(e) })
@@ -421,20 +429,29 @@ private fun MonthView(date: LocalDate, today: LocalDate, zone: TimeZone, events:
                     (0 until 7).forEach { i ->
                         val d = start.plus(DatePeriod(days = w * 7 + i))
                         val dayEvents = events.filter { it.occursOn(d, zone) }
+                        val isToday = d == today
+                        val inMonth = d.month == date.month
+                        val colors = MaterialTheme.colorScheme
+                        // Каждое число — карточка с видимой границей, нажимается целиком (пожелание
+                        // пользователя); свободное место в ней — под будущие сведения (платежи и т. п.).
                         Column(
-                            Modifier.weight(1f).height(cellHeight).clickable { onDay(d) }.padding(2.dp),
+                            Modifier.weight(1f).height(cellHeight).padding(2.dp)
+                                .clip(CELL_SHAPE)
+                                .background(if (inMonth) colors.surfaceContainer else colors.surface)
+                                .border(if (isToday) 2.dp else 1.dp, if (isToday) colors.primary else colors.outlineVariant, CELL_SHAPE)
+                                .clickable { onDay(d) }
+                                .padding(4.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            val isToday = d == today
                             Box(
-                                Modifier.size(28.dp).clip(CircleShape).background(if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface),
+                                Modifier.size(26.dp).clip(CircleShape).background(if (isToday) colors.primary else Color.Transparent),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     d.day.toString(),
                                     color = when {
                                         isToday -> MaterialTheme.colorScheme.onPrimary
-                                        d.month != date.month -> MaterialTheme.colorScheme.outline
+                                        !inMonth -> MaterialTheme.colorScheme.outline
                                         else -> MaterialTheme.colorScheme.onSurface
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
@@ -451,3 +468,5 @@ private fun MonthView(date: LocalDate, today: LocalDate, zone: TimeZone, events:
         }
     }
 }
+
+private val CELL_SHAPE = RoundedCornerShape(8.dp)

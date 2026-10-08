@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -49,7 +50,16 @@ import io.github.nullbrash.quazio.core.ui.res.cal_link_error_not_found
 import io.github.nullbrash.quazio.core.ui.res.cal_link_error_not_https
 import io.github.nullbrash.quazio.core.ui.res.cal_link_error_offline
 import io.github.nullbrash.quazio.core.ui.res.cal_link_error_too_large
-import io.github.nullbrash.quazio.core.ui.res.cal_link_how
+import io.github.nullbrash.quazio.core.ui.res.cal_link_guide_title
+import io.github.nullbrash.quazio.core.ui.res.cal_link_open_settings
+import io.github.nullbrash.quazio.core.ui.res.cal_link_other
+import io.github.nullbrash.quazio.core.ui.res.cal_link_secret_note
+import io.github.nullbrash.quazio.core.ui.res.cal_link_step1
+import io.github.nullbrash.quazio.core.ui.res.cal_link_step2
+import io.github.nullbrash.quazio.core.ui.res.cal_link_step3
+import io.github.nullbrash.quazio.core.ui.res.cal_link_step4
+import io.github.nullbrash.quazio.core.ui.res.cal_link_step5
+import androidx.compose.ui.platform.LocalUriHandler
 import io.github.nullbrash.quazio.core.ui.res.cal_link_name
 import io.github.nullbrash.quazio.core.ui.res.cal_link_never
 import io.github.nullbrash.quazio.core.ui.res.cal_link_updated
@@ -198,7 +208,7 @@ private fun AddLinkDialog(links: LinkedCalendars, onAdded: () -> Unit, onCancel:
         title = { Text(stringResource(Res.string.cal_link_add)) },
         text = {
             Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(Res.string.cal_link_how), style = MaterialTheme.typography.bodySmall)
+                LinkGuide()
                 OutlinedTextField(url, { url = it; error = null }, label = { Text(stringResource(Res.string.cal_link_url)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(name, { name = it }, label = { Text(stringResource(Res.string.cal_link_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -213,6 +223,38 @@ private fun AddLinkDialog(links: LinkedCalendars, onAdded: () -> Unit, onCancel:
         dismissButton = { TextButton(onClick = onCancel, enabled = !busy) { Text(stringResource(Res.string.action_cancel)) } },
     )
 }
+
+/**
+ * Пошагово, где взять ссылку (пожелание пользователя). Кнопка открывает настройки Google в
+ * браузере — это браузер, а не сеть Quazio.
+ */
+@Composable
+private fun LinkGuide() {
+    val uri = LocalUriHandler.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(stringResource(Res.string.cal_link_guide_title), style = MaterialTheme.typography.titleSmall)
+        Step(1, stringResource(Res.string.cal_link_step1))
+        OutlinedButton(onClick = { runCatching { uri.openUri(GOOGLE_CALENDAR_SETTINGS) } }, modifier = Modifier.padding(start = 24.dp)) {
+            Text(stringResource(Res.string.cal_link_open_settings))
+        }
+        Step(2, stringResource(Res.string.cal_link_step2))
+        Step(3, stringResource(Res.string.cal_link_step3))
+        Step(4, stringResource(Res.string.cal_link_step4))
+        Step(5, stringResource(Res.string.cal_link_step5))
+        Text(stringResource(Res.string.cal_link_secret_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(Res.string.cal_link_other), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun Step(n: Int, text: String) {
+    Row {
+        Text("$n.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(24.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private const val GOOGLE_CALENDAR_SETTINGS = "https://calendar.google.com/calendar/r/settings"
 
 @Composable
 internal fun statusText(status: LinkStatus): String {
