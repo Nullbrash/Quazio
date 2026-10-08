@@ -6,7 +6,9 @@ import io.github.nullbrash.quazio.core.db.QuazioDatabase
 import io.github.nullbrash.quazio.core.model.Uuid7
 import io.github.nullbrash.quazio.engine.recurrence.RRule
 import io.github.nullbrash.quazio.engine.recurrence.Recurrence
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.plus
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
@@ -21,6 +23,23 @@ enum class RecurringMode(val dbValue: String) {
 
     companion object {
         fun fromDb(value: String): RecurringMode = entries.first { it.dbValue == value }
+    }
+}
+
+/**
+ * Платёж 29–31-го (у ежегодного — 29 февраля) в месяце без этого числа. Программе неоткуда
+ * знать, как принято у конкретного платежа, — выбирает пользователь (его решение).
+ */
+enum class ShortMonth(val dbValue: String) {
+    /** Последний день месяца (раньше). */
+    LAST("last"),
+    /** 1-е число следующего месяца (позже). */
+    NEXT("next"),
+    /** Пропустить этот месяц (так по RFC 5545). */
+    SKIP("skip");
+
+    companion object {
+        fun fromDb(value: String?): ShortMonth? = entries.firstOrNull { it.dbValue == value }
     }
 }
 
@@ -43,6 +62,7 @@ data class Recurring(
     val paused: Boolean,
     /** После паузы: раньше этой даты повторения не спрашиваются. */
     val activeFrom: LocalDate?,
+    val shortMonth: ShortMonth? = null,
 )
 
 /** Что сохранить; [id] = null — новый платёж. */
@@ -60,6 +80,7 @@ data class RecurringDraft(
     val mode: RecurringMode = RecurringMode.ASK,
     val remindDays: Int = 1,
     val paused: Boolean = false,
+    val shortMonth: ShortMonth? = null,
 )
 
 enum class OccurrenceState {
@@ -107,13 +128,13 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
             "fin_account_id" to draft.finAccountId, "to_fin_account_id" to toAccount, "category_id" to category,
             "rrule" to draft.rrule, "start_date" to draft.startDate.toString(), "end_date" to draft.endDate?.toString(),
             "mode" to draft.mode.dbValue, "remind_days" to draft.remindDays.toString(), "paused" to flag(draft.paused),
-            "active_from" to activeFrom,
+            "active_from" to activeFrom, "short_month" to draft.shortMonth?.dbValue,
         )
         if (old == null) {
             val id = Uuid7.generate(clock.wallMillis())
             q.insertRecurring(id, accountId, name, draft.kind.dbValue, draft.amountMinor, draft.finAccountId, toAccount, category,
                 draft.rrule, draft.startDate.toString(), draft.endDate?.toString(), draft.mode.dbValue, draft.remindDays.toLong(),
-                if (draft.paused) 1 else 0, null, hlc.toString())
+                if (draft.paused) 1 else 0, null, draft.shortMonth?.dbValue, hlc.toString())
             changeLog.record(accountId, T_RECURRING, id, hlc, fields + ("currency" to "RUB"))
             id
         } else {
@@ -122,12 +143,13 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
                 "fin_account_id" to old.fin_account_id, "to_fin_account_id" to old.to_fin_account_id, "category_id" to old.category_id,
                 "rrule" to old.rrule, "start_date" to old.start_date, "end_date" to old.end_date, "mode" to old.mode,
                 "remind_days" to old.remind_days.toString(), "paused" to old.paused.toString(), "active_from" to old.active_from,
+                "short_month" to old.short_month,
             )
             val changed = fields.filter { (k, v) -> before[k] != v }
             if (changed.isNotEmpty()) {
                 q.updateRecurring(name, draft.kind.dbValue, draft.amountMinor, draft.finAccountId, toAccount, category, draft.rrule,
                     draft.startDate.toString(), draft.endDate?.toString(), draft.mode.dbValue, draft.remindDays.toLong(),
-                    if (draft.paused) 1 else 0, activeFrom, hlc.toString(), old.id)
+                    if (draft.paused) 1 else 0, activeFrom, draft.shortMonth?.dbValue, hlc.toString(), old.id)
                 changeLog.record(accountId, T_RECURRING, old.id, hlc, changed)
             }
             old.id
@@ -243,7 +265,10 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
 
     private fun dates(r: Recurring): Sequence<LocalDate> {
         val rule = RRule.parse(r.rrule) ?: return sequenceOf(r.startDate).filter { r.endDate == null || it <= r.endDate }
-        return Recurrence.dates(rule, r.startDate).let { s -> r.endDate?.let { end -> s.takeWhile { it <= end } } ?: s }
+        // «1-е следующего»: правило даёт последний день короткого месяца — сдвиг на день вперёд.
+        val raw = Recurrence.dates(rule, r.startDate)
+        val shifted = if (r.shortMonth == ShortMonth.NEXT) raw.map { if (it.day < r.startDate.day) it.plus(DatePeriod(days = 1)) else it } else raw
+        return shifted.let { s -> r.endDate?.let { end -> s.takeWhile { it <= end } } ?: s }
     }
 
     private fun validate(accountId: String, d: RecurringDraft) {
@@ -267,7 +292,7 @@ class RecurringService internal constructor(private val db: QuazioDatabase, priv
         id = id, name = name, kind = TxnKind.fromDb(kind), amountMinor = amount_minor, finAccountId = fin_account_id,
         toFinAccountId = to_fin_account_id, categoryId = category_id, rrule = rrule, startDate = LocalDate.parse(start_date),
         endDate = end_date?.let(LocalDate::parse), mode = RecurringMode.fromDb(mode), remindDays = remind_days.toInt(),
-        paused = paused != 0L, activeFrom = active_from?.let(LocalDate::parse),
+        paused = paused != 0L, activeFrom = active_from?.let(LocalDate::parse), shortMonth = ShortMonth.fromDb(short_month),
     )
 
     companion object {

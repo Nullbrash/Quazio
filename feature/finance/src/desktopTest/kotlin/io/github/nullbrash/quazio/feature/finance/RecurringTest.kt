@@ -108,6 +108,18 @@ class RecurringTest {
     }
 
     @Test
+    fun shortMonthNextAndSkip() {
+        // Выбор пользователя: 31-е в коротком месяце — 1-е следующего или пропуск.
+        fun dates(policy: ShortMonth, rrule: String) = rec.save(accountId, RecurringDraft(
+            name = "П$policy", kind = TxnKind.EXPENSE, amountMinor = 100, finAccountId = cash(),
+            rrule = rrule, startDate = d("2026-01-31"), shortMonth = policy,
+        )).let { id -> rec.occurrences(accountId, d("2026-01-01"), d("2026-05-15"), d("2026-01-01")).filter { it.recurring.id == id }.map { it.date } }
+        assertEquals(listOf(d("2026-01-31"), d("2026-03-01"), d("2026-03-31"), d("2026-05-01")),
+            dates(ShortMonth.NEXT, "FREQ=MONTHLY;BYMONTHDAY=28,29,30,31;BYSETPOS=-1"))
+        assertEquals(listOf(d("2026-01-31"), d("2026-03-31")), dates(ShortMonth.SKIP, "FREQ=MONTHLY"))
+    }
+
+    @Test
     fun invalidDraftsAreRejected() {
         assertFailsWith<IllegalArgumentException> {
             rec.save(accountId, RecurringDraft(name = "X", kind = TxnKind.EXPENSE, amountMinor = 0, finAccountId = cash(), rrule = "FREQ=MONTHLY", startDate = d("2026-10-01")))

@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,6 +77,15 @@ import io.github.nullbrash.quazio.core.ui.res.rec_record
 import io.github.nullbrash.quazio.core.ui.res.rec_skip
 import io.github.nullbrash.quazio.core.ui.res.rec_quarterly
 import io.github.nullbrash.quazio.core.ui.res.rec_repeat
+import io.github.nullbrash.quazio.core.ui.res.rec_short_last
+import io.github.nullbrash.quazio.core.ui.res.rec_short_last_feb
+import io.github.nullbrash.quazio.core.ui.res.rec_short_need
+import io.github.nullbrash.quazio.core.ui.res.rec_short_next
+import io.github.nullbrash.quazio.core.ui.res.rec_short_next_feb
+import io.github.nullbrash.quazio.core.ui.res.rec_short_skip
+import io.github.nullbrash.quazio.core.ui.res.rec_short_skip_feb
+import io.github.nullbrash.quazio.core.ui.res.rec_short_title
+import io.github.nullbrash.quazio.core.ui.res.rec_short_title_feb
 import io.github.nullbrash.quazio.core.ui.res.rec_title
 import io.github.nullbrash.quazio.core.ui.res.rec_until
 import io.github.nullbrash.quazio.core.ui.res.rec_weekly
@@ -96,6 +106,7 @@ import io.github.nullbrash.quazio.feature.finance.formatAmountForEdit
 import io.github.nullbrash.quazio.feature.finance.Recurring
 import io.github.nullbrash.quazio.feature.finance.RecurringDraft
 import io.github.nullbrash.quazio.feature.finance.RecurringMode
+import io.github.nullbrash.quazio.feature.finance.ShortMonth
 import io.github.nullbrash.quazio.feature.finance.TransactionDraft
 import io.github.nullbrash.quazio.feature.finance.TxnKind
 import io.github.nullbrash.quazio.feature.finance.formatMoney
@@ -123,20 +134,29 @@ internal enum class PaymentRepeat(val label: StringResource, val months: Int?) {
     YEARLY(Res.string.rec_yearly, 12),
 }
 
+/** Бывают ли месяцы (у ежегодного — годы) без числа первого платежа: 29–31-е, 29 февраля. */
+internal fun PaymentRepeat.hasShortMonths(start: LocalDate): Boolean = when (this) {
+    PaymentRepeat.WEEKLY -> false
+    PaymentRepeat.YEARLY -> start.month.ordinal == 1 && start.day == 29
+    else -> start.day > 28
+}
+
 /**
- * RRULE повтора от даты первого платежа. 29–31-е — «последний день, если такого числа нет»
- * (BYMONTHDAY=28..d;BYSETPOS=-1): платёж 31-го в феврале — 28-го, а не пропуск, как по RFC.
+ * RRULE повтора от даты первого платежа. Короткий месяц — как выбрал пользователь: «последний
+ * день» и «1-е следующего» — правилом BYMONTHDAY=28..d;BYSETPOS=-1 (сдвиг на 1-е делает сервис),
+ * «пропустить» — обычное правило (так по RFC 5545).
  */
-internal fun PaymentRepeat.rrule(start: LocalDate): String {
+internal fun PaymentRepeat.rrule(start: LocalDate, short: ShortMonth?): String {
     if (this == PaymentRepeat.WEEKLY) return "FREQ=WEEKLY"
     val n = months!!
     val base = if (n == 12) "FREQ=YEARLY" else "FREQ=MONTHLY" + if (n > 1) ";INTERVAL=$n" else ""
-    if (start.day <= 28) return base
+    if (!hasShortMonths(start) || short == null || short == ShortMonth.SKIP) return base
     val days = (28..start.day).joinToString(",")
-    return if (n == 12) "$base;BYMONTH=${start.month.ordinal + 1};BYMONTHDAY=$days;BYSETPOS=-1" else "$base;BYMONTHDAY=$days;BYSETPOS=-1"
+    return if (n == 12) "$base;BYMONTH=2;BYMONTHDAY=$days;BYSETPOS=-1" else "$base;BYMONTHDAY=$days;BYSETPOS=-1"
 }
 
-internal fun paymentRepeatOf(rrule: String, start: LocalDate): PaymentRepeat? = PaymentRepeat.entries.firstOrNull { it.rrule(start) == rrule }
+internal fun paymentRepeatOf(rrule: String, start: LocalDate, short: ShortMonth?): PaymentRepeat? =
+    PaymentRepeat.entries.firstOrNull { it.rrule(start, short) == rrule }
 
 internal fun shortDate(d: LocalDate) = dayMonth(LocalDateTime(d, LocalTime(0, 0)))
 
@@ -166,7 +186,7 @@ internal fun RecurringListScreen(
         if (items.isEmpty()) Text(stringResource(Res.string.rec_empty), modifier = Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
         LazyColumn(Modifier.fillMaxSize()) {
             items(items, key = { it.first.id }) { (r, next) ->
-                val repeat = paymentRepeatOf(r.rrule, r.startDate)?.label ?: Res.string.rec_custom
+                val repeat = paymentRepeatOf(r.rrule, r.startDate, r.shortMonth)?.label ?: Res.string.rec_custom
                 val status = when {
                     r.paused -> stringResource(Res.string.rec_paused)
                     next == null -> stringResource(Res.string.rec_finished)
@@ -231,6 +251,7 @@ internal fun RecurringEditor(
     var auto by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var remindDays by remember { mutableStateOf(1) }
+    var shortMonth by remember { mutableStateOf<ShortMonth?>(null) }
     var touchedCategory by remember { mutableStateOf(from?.categoryId != null) }
     var error by remember { mutableStateOf<String?>(null) }
     var showCalc by remember { mutableStateOf(false) }
@@ -249,7 +270,8 @@ internal fun RecurringEditor(
         categoryId = r.categoryId
         startDate = r.startDate
         endDate = r.endDate
-        repeat = paymentRepeatOf(r.rrule, r.startDate)
+        shortMonth = r.shortMonth
+        repeat = paymentRepeatOf(r.rrule, r.startDate, r.shortMonth)
         customRule = if (repeat == null) r.rrule else null
         auto = r.mode == RecurringMode.AUTO
         paused = r.paused
@@ -269,10 +291,13 @@ internal fun RecurringEditor(
     val categoryKind = if (kind == TxnKind.INCOME) CategoryKind.INCOME else CategoryKind.EXPENSE
     val node = categories.firstOrNull { it.id == categoryId }
 
+    val needsShort = repeat?.hasShortMonths(startDate) == true
+
     fun save() {
         scope.launch {
             error = when {
                 name.isBlank() -> getString(Res.string.rec_need_name)
+                needsShort && shortMonth == null -> getString(Res.string.rec_short_need)
                 amountMinor == null || amountMinor!! <= 0 -> getString(Res.string.txn_bad_amount)
                 finAccountId == null -> getString(Res.string.txn_need_account)
                 kind == TxnKind.TRANSFER && (toAccountId == null || toAccountId == finAccountId) -> getString(Res.string.txn_need_to_account)
@@ -282,9 +307,10 @@ internal fun RecurringEditor(
             val draft = RecurringDraft(
                 id = recurringId, name = name, kind = kind, amountMinor = amountMinor!!, finAccountId = finAccountId!!,
                 toFinAccountId = toAccountId, categoryId = categoryId,
-                rrule = repeat?.rrule(startDate) ?: customRule ?: PaymentRepeat.MONTHLY.rrule(startDate),
+                rrule = repeat?.rrule(startDate, shortMonth) ?: customRule ?: PaymentRepeat.MONTHLY.rrule(startDate, shortMonth),
                 startDate = startDate, endDate = endDate, mode = if (auto) RecurringMode.AUTO else RecurringMode.ASK,
                 remindDays = remindDays, paused = paused,
+                shortMonth = if (needsShort || repeat == null) shortMonth else null,
             )
             val result = withContext(Dispatchers.IO) { runCatching { finance.recurring.save(accountId, draft) } }
             result.onSuccess { onClose(true) }.onFailure { error = it.message }
@@ -377,6 +403,26 @@ internal fun RecurringEditor(
                 }
             }
 
+            // Куда платёж 29–31-го в месяце без этого числа — спрашиваем явно, без выбора по умолчанию.
+            if (needsShort) {
+                val feb = repeat == PaymentRepeat.YEARLY
+                Column {
+                    Text(
+                        if (feb) stringResource(Res.string.rec_short_title_feb) else stringResource(Res.string.rec_short_title, startDate.day),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    listOf(
+                        ShortMonth.LAST to if (feb) Res.string.rec_short_last_feb else Res.string.rec_short_last,
+                        ShortMonth.NEXT to if (feb) Res.string.rec_short_next_feb else Res.string.rec_short_next,
+                        ShortMonth.SKIP to if (feb) Res.string.rec_short_skip_feb else Res.string.rec_short_skip,
+                    ).forEach { (option, label) ->
+                        Row(Modifier.fillMaxWidth().clickable { shortMonth = option; error = null }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = shortMonth == option, onClick = { shortMonth = option; error = null })
+                            Text(stringResource(label))
+                        }
+                    }
+                }
+            }
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(Res.string.rec_auto), modifier = Modifier.weight(1f))

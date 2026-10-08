@@ -228,6 +228,15 @@
     <string name="rec_need_name">Введите название</string>
     <string name="rec_make">Сделать регулярной</string>
     <string name="rec_pending_title">Ждут подтверждения</string>
+    <string name="rec_short_title">В месяцах без %1$d-го числа платёж переносится:</string>
+    <string name="rec_short_last">на последний день месяца</string>
+    <string name="rec_short_next">на 1-е число следующего месяца</string>
+    <string name="rec_short_skip">никуда — в таком месяце платежа нет</string>
+    <string name="rec_short_title_feb">В годы без 29 февраля платёж переносится:</string>
+    <string name="rec_short_last_feb">на 28 февраля</string>
+    <string name="rec_short_next_feb">на 1 марта</string>
+    <string name="rec_short_skip_feb">никуда — в такой год платежа нет</string>
+    <string name="rec_short_need">Выберите, куда переносить платёж в месяцах без этого числа</string>
     <string name="rec_record">Записать</string>
     <string name="rec_skip">Пропустить</string>
     <string name="fin_accounts_order">Порядок счетов</string>
