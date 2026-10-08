@@ -57,6 +57,8 @@ internal fun CalendarEvent.occursOn(d: LocalDate, zone: TimeZone): Boolean {
 internal fun CalendarEvent.timeText(d: LocalDate, zone: TimeZone, allDayText: String): String {
     if (allDay) return allDayText
     val s = millisToLocal(start, zone)
+    // Событие-отметка без длительности — одно время, а не «15:00–15:00».
+    if (end == start) return hm(s)
     val e = millisToLocal(end, zone)
     val from = if (s.date == d) hm(s) else "…"
     val to = if (e.date == d || (e.date == d.nextDay() && e.hour == 0 && e.minute == 0)) hm(e) else "…"
