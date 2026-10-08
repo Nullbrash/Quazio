@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -216,7 +219,7 @@ fun CalendarScreen(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val titleBlock: @Composable () -> Unit = {
                 if (view == CalendarView.DAY) {
                     // В «дне» стрелки переключения — внизу у циферблата (пожелание пользователя).
                     Text(title(dayDate, view, sunday), style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
@@ -225,7 +228,16 @@ fun CalendarScreen(
                     Text(title(date, view, sunday), style = MaterialTheme.typography.titleLarge, maxLines = 1)
                     IconButton(onClick = { date = shift(date, view, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
                 }
-                Spacer(Modifier.weight(1f))
+            }
+            val viewChips: @Composable () -> Unit = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(CalendarView.DAY to Res.string.cal_view_day, CalendarView.WEEK to Res.string.cal_view_week, CalendarView.MONTH to Res.string.cal_view_month)
+                        .forEach { (v, label) ->
+                            FilterChip(selected = view == v, onClick = { if (v == CalendarView.DAY) openDay(if (view == CalendarView.DAY) dayDate else date) else { date = if (view == CalendarView.DAY) dayDate else date; view = v } }, label = { Text(stringResource(label)) })
+                        }
+                }
+            }
+            val actions: @Composable () -> Unit = {
                 if (refresher != null) {
                     if (refreshing) CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
                     else IconButton(onClick = { refreshScope.launch { refresher.refresh() } }) {
@@ -234,15 +246,31 @@ fun CalendarScreen(
                 }
                 TextButton(onClick = ::backToNow) { Text(stringResource(Res.string.cal_today)) }
             }
+            // Широкое окно — дата и «День / Неделя / Месяц» в одну строку (пожелание пользователя);
+            // на узком телефоне всё вместе не помещается — две строки.
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                if (maxWidth >= WIDE_HEADER) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        titleBlock()
+                        Spacer(Modifier.size(24.dp))
+                        viewChips()
+                        Spacer(Modifier.weight(1f))
+                        actions()
+                    }
+                } else {
+                    Column {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            titleBlock()
+                            Spacer(Modifier.weight(1f))
+                            actions()
+                        }
+                        Box(Modifier.padding(horizontal = 16.dp)) { viewChips() }
+                    }
+                }
+            }
             // Загрузка не удалась — видна прошлая; говорим об этом, а не молча показываем старое.
             linkProblem?.let {
                 Text(statusText(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
-            }
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(CalendarView.DAY to Res.string.cal_view_day, CalendarView.WEEK to Res.string.cal_view_week, CalendarView.MONTH to Res.string.cal_view_month)
-                    .forEach { (v, label) ->
-                        FilterChip(selected = view == v, onClick = { if (v == CalendarView.DAY) openDay(if (view == CalendarView.DAY) dayDate else date) else { date = if (view == CalendarView.DAY) dayDate else date; view = v } }, label = { Text(stringResource(label)) })
-                    }
             }
             val calendarName = calendars.associate { it.id to it.name }
             val open: (CalendarEvent) -> Unit = { e -> target = EventTarget(e.eventId, e.instanceStart, e.recurring, null) }
@@ -392,23 +420,26 @@ private fun EventRow(e: CalendarEvent, time: String, calendar: String?, onClick:
 private fun WeekView(start: LocalDate, today: LocalDate, zone: TimeZone, events: List<CalendarEvent>, onDay: (LocalDate) -> Unit, onOpen: (CalendarEvent) -> Unit) {
     val allDayText = stringResource(Res.string.cal_all_day)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        // День — слева от своих событий, коротко «5 – Пн» (пожелание пользователя).
         (0 until 7).forEach { i ->
             val d = start.plus(DatePeriod(days = i))
-            item {
-                Text(
-                    longDate(d),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = if (d == today) FontWeight.Bold else null,
-                    color = if (d == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.fillMaxWidth().clickable { onDay(d) }.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
-                )
-            }
             val dayEvents = events.filter { it.occursOn(d, zone) }.sortedWith(compareBy({ !it.allDay }, { it.start }))
-            if (dayEvents.isEmpty()) item {
-                Text("—", modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            item {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                    Text(
+                        "${d.day} – ${WEEKDAYS_SHORT[d.dayOfWeek.ordinal]}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = if (d == today) FontWeight.Bold else null,
+                        color = if (d == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.width(WEEK_DAY_COLUMN).fillMaxHeight().clickable { onDay(d) }.padding(start = 16.dp, top = 12.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        if (dayEvents.isEmpty()) Text("—", modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        dayEvents.forEach { e -> EventRow(e, e.timeText(d, zone, allDayText), null, onClick = { onOpen(e) }) }
+                    }
+                }
+                HorizontalDivider()
             }
-            dayEvents.forEach { e -> item { EventRow(e, e.timeText(d, zone, allDayText), null, onClick = { onOpen(e) }) } }
-            item { HorizontalDivider(Modifier.padding(top = 4.dp)) }
         }
     }
 }
@@ -470,3 +501,6 @@ private fun MonthView(date: LocalDate, today: LocalDate, zone: TimeZone, events:
 }
 
 private val CELL_SHAPE = RoundedCornerShape(8.dp)
+
+private val WIDE_HEADER = 600.dp
+private val WEEK_DAY_COLUMN = 84.dp
