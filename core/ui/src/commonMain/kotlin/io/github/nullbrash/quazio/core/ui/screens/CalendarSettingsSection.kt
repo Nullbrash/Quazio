@@ -54,6 +54,7 @@ import io.github.nullbrash.quazio.core.ui.screens.finance.ColorDot
 import io.github.nullbrash.quazio.feature.calendar.CalendarInfo
 import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
 import io.github.nullbrash.quazio.feature.calendar.CalendarSource
+import io.github.nullbrash.quazio.feature.calendar.ical.LinkedCalendars
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
@@ -69,6 +70,8 @@ private enum class CalendarDialog { NONE, SHOWN, DEFAULT }
  */
 @Composable
 internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPrefs, onChanged: () -> Unit = {}) {
+    // ПК: вместо календарей устройства — ссылки iCal.
+    if (source is LinkedCalendars) return LinkedCalendarsSection(source, prefs, onChanged)
     val scope = rememberCoroutineScope()
     val access = LocalCalendarAccess.current
     var enabled by remember { mutableStateOf(prefs.enabled) }

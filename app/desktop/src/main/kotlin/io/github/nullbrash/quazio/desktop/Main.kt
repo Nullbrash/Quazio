@@ -15,6 +15,9 @@ import io.github.nullbrash.quazio.core.lock.AppLock
 import io.github.nullbrash.quazio.core.lock.PasswordVault
 import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.QuazioApp
+import io.github.nullbrash.quazio.core.ui.appStateStore
+import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
+import io.github.nullbrash.quazio.feature.calendar.ical.LinkedCalendars
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -23,6 +26,9 @@ private fun dataDir(): Path =
     System.getProperty("quazio.dataDir")?.let { Paths.get(it) }
         ?: Paths.get(System.getenv("LOCALAPPDATA") ?: System.getProperty("user.home"), "Quazio")
 
+// Версию передаёт сборка через -Dquazio.version; без неё — запуск мимо Gradle.
+private val appVersion: String = System.getProperty("quazio.version") ?: "dev"
+
 // Один раз на процесс; первое обращение — из фонового потока оболочки.
 private val services: AppServices by lazy {
     val dir = dataDir()
@@ -30,6 +36,7 @@ private val services: AppServices by lazy {
     val lock = AppLock(System::currentTimeMillis)
     val clock = DeviceClock(db, System::currentTimeMillis)
     SessionLockWatcher.start(onLocked = lock::lockNow)
+    val state = db.appStateStore()
     val services = AppServices(
         accounts = AccountService(db, clock),
         finance = FinanceService(db, clock),
@@ -39,6 +46,9 @@ private val services: AppServices by lazy {
         platform = "windows",
         // На ПК пароль Quazio необязателен (решение пользователя): база и так под ключом Windows.
         passwordRequired = false,
+        // Календари Google по секретным ссылкам — единственное, ради чего ПК-версия выходит в сеть.
+        calendar = LinkedCalendars(state, IcalHttpFetcher(appVersion), System::currentTimeMillis),
+        calendarPrefs = CalendarPrefs(state),
     )
     DevStress.seedIfRequested(services)
     services
@@ -53,8 +63,7 @@ fun main() = application {
         val fileSaver = remember(window) { DesktopFileSaver(window) }
         LaunchedEffect(window) { DevStress.scrollIfRequested(window) }
         QuazioApp(
-            // Версию передаёт сборка через -Dquazio.version; без неё — запуск мимо Gradle.
-            versionName = System.getProperty("quazio.version") ?: "dev",
+            versionName = appVersion,
             openServices = { services },
             fileSaver = fileSaver,
         )

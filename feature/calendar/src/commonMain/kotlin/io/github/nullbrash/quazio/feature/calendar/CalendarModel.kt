@@ -68,7 +68,7 @@ data class EventDraft(
 }
 
 /**
- * Календари устройства: Android — `CalendarContract`, позже ПК — ссылки iCal (только чтение).
+ * Календари: Android — `CalendarContract`, ПК — ссылки iCal (`LinkedCalendars`, только чтение).
  * Вызывать не из главного потока: это запросы к хранилищу.
  */
 interface CalendarSource {

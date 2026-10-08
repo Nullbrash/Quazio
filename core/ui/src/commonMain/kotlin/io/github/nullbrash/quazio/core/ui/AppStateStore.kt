@@ -9,4 +9,7 @@ fun QuazioDatabase.appStateStore(): KeyValueStore = object : KeyValueStore {
     override fun put(key: String, value: String) {
         appStateQueries.put(key, value)
     }
+    override fun remove(key: String) {
+        appStateQueries.delete(key)
+    }
 }

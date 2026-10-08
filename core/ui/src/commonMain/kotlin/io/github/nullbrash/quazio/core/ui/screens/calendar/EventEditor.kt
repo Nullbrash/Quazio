@@ -80,6 +80,7 @@ import io.github.nullbrash.quazio.core.ui.res.cal_rem_day
 import io.github.nullbrash.quazio.core.ui.res.cal_rem_hour
 import io.github.nullbrash.quazio.core.ui.res.cal_rem_min
 import io.github.nullbrash.quazio.core.ui.res.cal_rem_start
+import io.github.nullbrash.quazio.core.ui.res.cal_read_only_event
 import io.github.nullbrash.quazio.core.ui.res.cal_rem_week
 import io.github.nullbrash.quazio.core.ui.res.cal_save
 import io.github.nullbrash.quazio.core.ui.res.cal_scope_all
@@ -196,6 +197,12 @@ internal fun EventEditor(
         loaded = true
     }
     if (!loaded) return
+    // Календарь только для просмотра (ПК — по ссылке; телефон — чужой или праздники): правку некуда записать.
+    val calendar = calendars.firstOrNull { it.id == calendarId }
+    if (target.eventId != null && calendar?.writable != true) {
+        EventDetails(title, allDay, start, durationMin, zone, calendar, repeat, location, description, onClose = { onClose(false) })
+        return
+    }
 
     // Весь день — даты: в Android это полночь UTC; длительность — целые дни.
     fun draft(): EventDraft? {
@@ -438,6 +445,54 @@ private fun Picker(label: String, value: String, items: @Composable (dismiss: ()
         Box {
             OutlinedButton(onClick = { open = true }) { Text(value) }
             DropdownMenu(open, { open = false }) { items { open = false } }
+        }
+    }
+}
+
+@Composable
+private fun EventDetails(
+    title: String,
+    allDay: Boolean,
+    start: LocalDateTime,
+    durationMin: Long,
+    zone: TimeZone,
+    calendar: CalendarInfo?,
+    repeat: Repeat,
+    location: String,
+    description: String,
+    onClose: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
+            Text(stringResource(Res.string.cal_edit_event), style = MaterialTheme.typography.titleLarge)
+        }
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 720.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title.ifBlank { "—" }, style = MaterialTheme.typography.headlineSmall)
+            val when_ = if (allDay) {
+                val days = maxOf(1L, (durationMin + 1439) / 1440)
+                val last = millisToLocal(start.millis(TimeZone.UTC) + (days - 1) * 1440 * MIN, TimeZone.UTC).date
+                if (last == start.date) longDate(start.date) + " · " + stringResource(Res.string.cal_all_day)
+                else longDate(start.date) + " – " + longDate(last)
+            } else {
+                val end = millisToLocal(start.millis(zone) + durationMin * MIN, zone)
+                if (end.date == start.date) "${longDate(start.date)}, ${hm(start)} – ${hm(end)}"
+                else "${longDate(start.date)}, ${hm(start)} – ${longDate(end.date)}, ${hm(end)}"
+            }
+            Text(when_, style = MaterialTheme.typography.bodyLarge)
+            if (repeat.kind != RepeatKind.NONE) Text(stringResource(repeat.kind.label), style = MaterialTheme.typography.bodyMedium)
+            calendar?.let {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ColorDot(it.color)
+                    Text(it.name, modifier = Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            if (location.isNotBlank()) Text(stringResource(Res.string.cal_location) + ": " + location, style = MaterialTheme.typography.bodyMedium)
+            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(Res.string.cal_read_only_event), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

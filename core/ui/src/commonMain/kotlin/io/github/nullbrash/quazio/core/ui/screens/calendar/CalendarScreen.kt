@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +23,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import io.github.nullbrash.quazio.core.ui.LocalCalendarRefresher
+import io.github.nullbrash.quazio.core.ui.res.cal_refresh
+import io.github.nullbrash.quazio.core.ui.screens.statusText
+import io.github.nullbrash.quazio.feature.calendar.ical.LinkStatus
+import io.github.nullbrash.quazio.feature.calendar.ical.LinkedCalendars
+import kotlinx.coroutines.launch
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -127,6 +137,12 @@ fun CalendarScreen(
     var dial24 by remember { mutableStateOf(prefs.dial24) }
     var target by remember { mutableStateOf<EventTarget?>(null) }
     var reload by remember { mutableStateOf(0) }
+    // ПК: календари по ссылкам загружаются по сети — при открытии, по расписанию и кнопкой.
+    val refresher = LocalCalendarRefresher.current
+    val revision = refresher?.revision?.collectAsState()?.value ?: 0
+    val refreshing = refresher?.running?.collectAsState()?.value ?: false
+    var linkProblem by remember { mutableStateOf<LinkStatus?>(null) }
+    val refreshScope = rememberCoroutineScope()
 
     LaunchedEffect(jumpTo) {
         if (jumpTo != null) {
@@ -144,6 +160,7 @@ fun CalendarScreen(
     }
     LaunchedEffect(now) { if (live) cursor = now }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { reload++ }
+    LaunchedEffect(enabled) { if (enabled) refresher?.onCalendarOpened() }
 
     fun backToNow() {
         cursor = now
@@ -169,10 +186,11 @@ fun CalendarScreen(
         CalendarView.WEEK -> weekStart(date, sunday).let { it.startMillis(zone) to it.plus(DatePeriod(days = 7)).startMillis(zone) }
         CalendarView.MONTH -> monthGridStart(date, sunday).let { it.startMillis(zone) to it.plus(DatePeriod(days = 42)).startMillis(zone) }
     }
-    LaunchedEffect(enabled, from, to, reload) {
+    LaunchedEffect(enabled, from, to, reload, revision) {
         if (!enabled) return@LaunchedEffect
         val (cals, evs) = withContext(Dispatchers.IO) {
             val cals = source.calendars()
+            linkProblem = (source as? LinkedCalendars)?.let { l -> l.links().map { l.status(it.id) }.firstOrNull { it.problem != null } }
             cals to source.events(from, to, prefs.shown(cals).mapTo(HashSet()) { it.id })
         }
         calendars = cals
@@ -205,7 +223,17 @@ fun CalendarScreen(
                     IconButton(onClick = { date = shift(date, view, 1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
                 }
                 Spacer(Modifier.weight(1f))
+                if (refresher != null) {
+                    if (refreshing) CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
+                    else IconButton(onClick = { refreshScope.launch { refresher.refresh() } }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(Res.string.cal_refresh))
+                    }
+                }
                 TextButton(onClick = ::backToNow) { Text(stringResource(Res.string.cal_today)) }
+            }
+            // Загрузка не удалась — видна прошлая; говорим об этом, а не молча показываем старое.
+            linkProblem?.let {
+                Text(statusText(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
             }
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(CalendarView.DAY to Res.string.cal_view_day, CalendarView.WEEK to Res.string.cal_view_week, CalendarView.MONTH to Res.string.cal_view_month)
@@ -232,7 +260,8 @@ fun CalendarScreen(
                 CalendarView.MONTH -> MonthView(date, today, zone, events, sunday, onDay = ::openDay)
             }
         }
-        FloatingActionButton(
+        // Писать некуда (на ПК календари по ссылке — только просмотр) — кнопки нового события нет.
+        if (prefs.shown(calendars).any { it.writable }) FloatingActionButton(
             onClick = {
                 // Новое событие — ближайший полный час от показанного времени.
                 val base = if (view == CalendarView.DAY) cursor else maxOf(now, date.startMillis(zone) + 9 * HOUR_MS)
@@ -380,37 +409,41 @@ private fun WeekView(start: LocalDate, today: LocalDate, zone: TimeZone, events:
 private fun MonthView(date: LocalDate, today: LocalDate, zone: TimeZone, events: List<CalendarEvent>, sunday: Boolean, onDay: (LocalDate) -> Unit) {
     val start = monthGridStart(date, sunday)
     val names = if (sunday) listOf(WEEKDAYS_SHORT.last()) + WEEKDAYS_SHORT.dropLast(1) else WEEKDAYS_SHORT
-    Column(Modifier.fillMaxWidth().padding(8.dp)) {
-        Row(Modifier.fillMaxWidth()) {
-            names.forEach { n -> Text(n, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-        (0 until 6).forEach { w ->
+    // Клетка — по ширине, но не выше, чем помещается шесть недель: на широком окне ПК иначе обрезалось.
+    BoxWithConstraints(Modifier.fillMaxSize().padding(8.dp)) {
+        val cellHeight = minOf(maxWidth / 7 / 0.8f, (maxHeight - 24.dp) / 6)
+        Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth()) {
-                (0 until 7).forEach { i ->
-                    val d = start.plus(DatePeriod(days = w * 7 + i))
-                    val dayEvents = events.filter { it.occursOn(d, zone) }
-                    Column(
-                        Modifier.weight(1f).aspectRatio(0.8f).clickable { onDay(d) }.padding(2.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        val isToday = d == today
-                        Box(
-                            Modifier.size(28.dp).clip(CircleShape).background(if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface),
-                            contentAlignment = Alignment.Center,
+                names.forEach { n -> Text(n, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            (0 until 6).forEach { w ->
+                Row(Modifier.fillMaxWidth()) {
+                    (0 until 7).forEach { i ->
+                        val d = start.plus(DatePeriod(days = w * 7 + i))
+                        val dayEvents = events.filter { it.occursOn(d, zone) }
+                        Column(
+                            Modifier.weight(1f).height(cellHeight).clickable { onDay(d) }.padding(2.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(
-                                d.day.toString(),
-                                color = when {
-                                    isToday -> MaterialTheme.colorScheme.onPrimary
-                                    d.month != date.month -> MaterialTheme.colorScheme.outline
-                                    else -> MaterialTheme.colorScheme.onSurface
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            dayEvents.take(4).forEach { e -> Box(Modifier.size(6.dp).clip(CircleShape).background(colorOf(e.color))) }
+                            val isToday = d == today
+                            Box(
+                                Modifier.size(28.dp).clip(CircleShape).background(if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    d.day.toString(),
+                                    color = when {
+                                        isToday -> MaterialTheme.colorScheme.onPrimary
+                                        d.month != date.month -> MaterialTheme.colorScheme.outline
+                                        else -> MaterialTheme.colorScheme.onSurface
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                dayEvents.take(4).forEach { e -> Box(Modifier.size(6.dp).clip(CircleShape).background(colorOf(e.color))) }
+                            }
                         }
                     }
                 }

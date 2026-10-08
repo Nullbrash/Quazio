@@ -23,6 +23,7 @@ kotlin {
 dependencies {
     implementation(projects.core.ui)
     implementation(projects.core.accounts)
+    implementation(projects.net.http)
     implementation(libs.jna.platform)
     implementation(compose.desktop.currentOs)
 }
@@ -50,7 +51,9 @@ compose.desktop {
             packageVersion = appVersion.numericName
             // Урезанная Java установленной программы: без java.sql база не открывается
             // (запуск из Gradle этого не ловит — там полный JDK). Список — suggestRuntimeModules.
-            modules("java.instrument", "java.sql", "jdk.unsupported")
+            // java.net.http и jdk.crypto.ec — ссылки iCal по https (в Java 21 без jdk.crypto.ec
+            // не проходит TLS с сертификатами на эллиптических кривых, как у Google).
+            modules("java.instrument", "java.sql", "jdk.unsupported", "java.net.http", "jdk.crypto.ec")
         }
     }
 }

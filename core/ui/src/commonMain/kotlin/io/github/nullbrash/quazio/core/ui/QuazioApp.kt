@@ -44,6 +44,7 @@ import io.github.nullbrash.quazio.core.ui.res.nav_settings
 import io.github.nullbrash.quazio.core.ui.screens.calendar.CalendarCache
 import io.github.nullbrash.quazio.core.ui.screens.calendar.CalendarScreen
 import io.github.nullbrash.quazio.core.ui.screens.finance.FinanceScreen
+import io.github.nullbrash.quazio.feature.calendar.ical.LinkedCalendars
 import kotlinx.datetime.LocalDate
 import androidx.compose.runtime.remember
 import io.github.nullbrash.quazio.core.ui.screens.LockGate
@@ -129,7 +130,15 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { services.lock.onBackground() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { services.lock.onForeground() }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // ПК: календари по ссылкам — загрузка раз в 15 минут, пока окно открыто (решение пользователя).
+    val refresher = remember(services) {
+        val links = services.calendar as? LinkedCalendars
+        val prefs = services.calendarPrefs
+        if (links != null && prefs != null) CalendarRefresher(links, prefs) else null
+    }
+    LaunchedEffect(refresher) { refresher?.runWhileOpen() }
+
+    CompositionLocalProvider(LocalCalendarRefresher provides refresher) { BoxWithConstraints(Modifier.fillMaxSize()) {
         when (navLayoutFor(maxWidth)) {
             NavLayout.BOTTOM_BAR -> Scaffold(
                 bottomBar = {
@@ -167,7 +176,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                 }
             }
         }
-    }
+    } }
 }
 
 @Composable

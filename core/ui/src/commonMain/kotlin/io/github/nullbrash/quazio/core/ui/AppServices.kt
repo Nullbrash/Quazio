@@ -20,7 +20,7 @@ class AppServices(
     val platform: String,
     /** Без блокировки экрана пароль обязателен (телефон) или нет (ПК — решение пользователя). */
     val passwordRequired: Boolean,
-    /** Календари устройства (Android); null — на этой платформе пока нет (ПК — фаза 3 плана календаря). */
+    /** Календари: Android — устройства, ПК — Google по ссылкам iCal (`LinkedCalendars`: свои настройки, сеть). */
     val calendar: CalendarSource? = null,
     val calendarPrefs: CalendarPrefs? = null,
 )
