@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -57,7 +58,7 @@ class RecurringUiTest {
 
     /** Первый платёж бывает и 29–31-го (тесты идут по сегодняшней дате) — тогда выбрать перенос. */
     private fun androidx.compose.ui.test.ComposeUiTest.answerShortMonthIfAsked() {
-        if (onAllNodes(hasText("на последний день месяца")).fetchSemanticsNodes().isNotEmpty()) onNodeWithText("на последний день месяца").performClick()
+        if (onAllNodes(hasText("на последний день месяца")).fetchSemanticsNodes().isNotEmpty()) onNodeWithText("на последний день месяца").performScrollTo().performClick()
     }
 
     @Test
@@ -77,7 +78,7 @@ class RecurringUiTest {
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Выберите, куда переносить", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(finance.recurring.all(accountId).isEmpty())
 
-        onNodeWithText("на 1-е число следующего месяца").performClick()
+        onNodeWithText("на 1-е число следующего месяца").performScrollTo().performClick()
         onNodeWithText("Сохранить").performClick()
         waitUntil(timeoutMillis = 10_000) { closed }
         val r = finance.recurring.all(accountId).single()
