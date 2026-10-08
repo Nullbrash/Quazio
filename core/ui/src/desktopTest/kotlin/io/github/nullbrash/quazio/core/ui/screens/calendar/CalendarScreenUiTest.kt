@@ -88,6 +88,21 @@ class CalendarScreenUiTest {
     }
 
     @Test
+    fun paymentsLayerShowsNameOnlyAndOpensFinance() = runComposeUiTest {
+        var opened: String? = null
+        val payment = CalendarEvent(
+            "payment:r1|today", "payments", "Интернет", utcToday, utcToday + 24 * h, true, "UTC", 0xFFFFA000, null, true, utcToday,
+            payment = io.github.nullbrash.quazio.feature.calendar.PaymentMark("r1", waiting = true),
+        )
+        setContent { MaterialTheme { CalendarScreen(FakeSource(), prefs, payments = { _, _ -> listOf(payment) }, onOpenPayment = { opened = it }) } }
+        // Без суммы (календарь открыт без входа), с пометкой «ждёт записи».
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Интернет · ждёт записи")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Интернет · ждёт записи").performClick()
+        waitUntil(timeoutMillis = 10_000) { opened != null }
+        assertEquals("r1", opened)
+    }
+
+    @Test
     fun allDayEventsDoNotMoveDialAndDayButtons() = runComposeUiTest {
         setContent { MaterialTheme { CalendarScreen(FakeSource(), prefs) } }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Отпуск")).fetchSemanticsNodes().isNotEmpty() }

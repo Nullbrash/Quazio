@@ -40,6 +40,7 @@ import androidx.compose.ui.window.Dialog
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.calc_title
+import io.github.nullbrash.quazio.core.ui.res.lock_done
 import io.github.nullbrash.quazio.feature.finance.AmountExpression
 import io.github.nullbrash.quazio.feature.finance.formatAmountForEdit
 import io.github.nullbrash.quazio.feature.finance.formatMoney
@@ -142,7 +143,7 @@ internal fun CalculatorDialog(
                         row.forEach { k ->
                             Box(Modifier.weight(1f).aspectRatio(1.6f)) {
                                 FilledTonalButton(onClick = { if (k == "✓") done() else press(k) }, modifier = Modifier.fillMaxWidth().aspectRatio(1.6f)) {
-                                    if (k == "✓") Icon(Icons.Filled.Check, contentDescription = null) else Text(k, style = MaterialTheme.typography.titleMedium)
+                                    if (k == "✓") Icon(Icons.Filled.Check, contentDescription = stringResource(Res.string.lock_done)) else Text(k, style = MaterialTheme.typography.titleMedium)
                                 }
                             }
                         }

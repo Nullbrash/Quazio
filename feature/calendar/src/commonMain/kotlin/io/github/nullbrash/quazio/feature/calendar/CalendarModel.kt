@@ -40,7 +40,12 @@ data class CalendarEvent(
     val recurring: Boolean,
     /** Исходное начало этого повторения — по нему правится или отменяется одно повторение. */
     val instanceStart: Long,
+    /** Не событие календаря, а регулярный платёж из финансов (слой поверх календарей). */
+    val payment: PaymentMark? = null,
 )
+
+/** Платёж в календаре: только название и значок, сумма — в финансах под замком (решение пользователя). */
+data class PaymentMark(val recurringId: String, val waiting: Boolean)
 
 /** Что записать в календарь. Напоминания — самого календаря (Google сам их и покажет). */
 data class EventDraft(

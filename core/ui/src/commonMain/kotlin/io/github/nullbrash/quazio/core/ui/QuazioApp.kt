@@ -116,6 +116,9 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
     var current by rememberSaveable { mutableStateOf(Destination.FINANCE) }
     // Нажатие на месяц в финансах — этот месяц в календаре (пожелание пользователя).
     var calendarJump by remember { mutableStateOf<LocalDate?>(null) }
+    // Платёж, нажатый в календаре, — открыть в финансах (под замком).
+    var financeJump by remember { mutableStateOf<String?>(null) }
+    val openPayment: (String) -> Unit = { financeJump = it; current = Destination.FINANCE }
     // События календаря помнятся между переключениями разделов — вкладка открывается без пустого кадра.
     val calendarCache = remember { CalendarCache() }
     val destinations = Destination.entries.filter { it != Destination.CALENDAR || services.calendar != null }
@@ -155,7 +158,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                 },
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
-                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache)
+                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment)
                 }
             }
 
@@ -172,7 +175,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                             )
                         }
                     }
-                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache) }
+                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment) }
                 }
             }
         }
@@ -189,14 +192,24 @@ private fun DestinationContent(
     onJumpHandled: () -> Unit,
     openCalendar: (LocalDate) -> Unit,
     calendarCache: CalendarCache,
+    financeJump: String?,
+    onFinanceJumpHandled: () -> Unit,
+    openPayment: (String) -> Unit,
 ) {
     val screen: @Composable () -> Unit = {
         when (destination) {
-            Destination.FINANCE -> FinanceScreen(services, onOpenCalendar = if (services.calendar != null) openCalendar else null)
+            Destination.FINANCE -> FinanceScreen(
+                services, onOpenCalendar = if (services.calendar != null) openCalendar else null,
+                openRecurring = financeJump, onRecurringHandled = onFinanceJumpHandled,
+            )
             Destination.CALENDAR -> {
                 val source = services.calendar
                 val prefs = services.calendarPrefs
-                if (source != null && prefs != null) CalendarScreen(source, prefs, calendarJump, onJumpHandled, calendarCache)
+                if (source != null && prefs != null) CalendarScreen(
+                    source, prefs, calendarJump, onJumpHandled, calendarCache,
+                    payments = { from, to -> paymentEvents(services, from, to) },
+                    onOpenPayment = openPayment,
+                )
             }
             Destination.SETTINGS -> SettingsScreen(versionName, services, deviceAuth)
         }

@@ -35,6 +35,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import io.github.nullbrash.quazio.core.ui.LocalCalendarRefresher
 import io.github.nullbrash.quazio.core.ui.res.cal_refresh
+import io.github.nullbrash.quazio.core.ui.res.cal_payment
+import io.github.nullbrash.quazio.core.ui.res.cal_payment_waiting
+import io.github.nullbrash.quazio.core.ui.QuazioIcons
 import io.github.nullbrash.quazio.core.ui.screens.statusText
 import io.github.nullbrash.quazio.feature.calendar.ical.LinkStatus
 import io.github.nullbrash.quazio.feature.calendar.ical.LinkedCalendars
@@ -127,6 +130,9 @@ fun CalendarScreen(
     jumpTo: LocalDate? = null,
     onJumpHandled: () -> Unit = {},
     cache: CalendarCache = remember { CalendarCache() },
+    /** Регулярные платежи на отрезок дат [from, toExclusive) — слой поверх календарей. */
+    payments: ((LocalDate, LocalDate) -> List<CalendarEvent>)? = null,
+    onOpenPayment: (String) -> Unit = {},
 ) {
     val zone = remember { TimeZone.currentSystemDefault() }
     val access = LocalCalendarAccess.current
@@ -197,7 +203,11 @@ fun CalendarScreen(
         val (cals, evs) = withContext(Dispatchers.IO) {
             val cals = source.calendars()
             linkProblem = (source as? LinkedCalendars)?.let { l -> l.links().map { l.status(it.id) }.firstOrNull { it.problem != null } }
-            cals to source.events(from, to, prefs.shown(cals).mapTo(HashSet()) { it.id })
+            val own = source.events(from, to, prefs.shown(cals).mapTo(HashSet()) { it.id })
+            val extra = payments?.let { load ->
+                runCatching { load(millisToLocal(from, zone).date, millisToLocal(to, zone).date.plus(DatePeriod(days = 1))) }.getOrDefault(emptyList())
+            }.orEmpty()
+            cals to own + extra
         }
         calendars = cals
         events = evs
@@ -273,7 +283,10 @@ fun CalendarScreen(
                 Text(statusText(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
             }
             val calendarName = calendars.associate { it.id to it.name }
-            val open: (CalendarEvent) -> Unit = { e -> target = EventTarget(e.eventId, e.instanceStart, e.recurring, null) }
+            val open: (CalendarEvent) -> Unit = { e ->
+                val p = e.payment
+                if (p != null) onOpenPayment(p.recurringId) else target = EventTarget(e.eventId, e.instanceStart, e.recurring, null)
+            }
             when (view) {
                 CalendarView.DAY -> {
                     val full24 = dial24
@@ -389,7 +402,7 @@ private fun DayView(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(allDayText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterVertically).padding(end = 4.dp))
-                allDay.forEach { e -> AssistChip(onClick = { onOpen(e) }, label = { Text(e.title.ifBlank { "—" }, maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingIcon = { ColorDot(e.color) }) }
+                allDay.forEach { e -> AssistChip(onClick = { onOpen(e) }, label = { Text(eventTitle(e), maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingIcon = { EventMark(e) }) }
             }
         }
         if (dayEvents.isEmpty()) item {
@@ -406,10 +419,10 @@ private fun DayView(
 @Composable
 private fun EventRow(e: CalendarEvent, time: String, calendar: String?, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        ColorDot(e.color)
+        EventMark(e)
         Text(time, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 12.dp).widthIn(min = 92.dp))
         Column(Modifier.weight(1f)) {
-            Text(e.title.ifBlank { "—" }, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(eventTitle(e), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val extra = listOfNotNull(e.location, calendar).joinToString(" · ")
             if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -419,6 +432,7 @@ private fun EventRow(e: CalendarEvent, time: String, calendar: String?, onClick:
 @Composable
 private fun WeekView(start: LocalDate, today: LocalDate, zone: TimeZone, events: List<CalendarEvent>, onDay: (LocalDate) -> Unit, onOpen: (CalendarEvent) -> Unit) {
     val allDayText = stringResource(Res.string.cal_all_day)
+    val paymentText = stringResource(Res.string.cal_payment)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
         // День — слева от своих событий, коротко «5 – Пн» (пожелание пользователя).
         (0 until 7).forEach { i ->
@@ -435,7 +449,7 @@ private fun WeekView(start: LocalDate, today: LocalDate, zone: TimeZone, events:
                     )
                     Column(Modifier.weight(1f)) {
                         if (dayEvents.isEmpty()) Text("—", modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        dayEvents.forEach { e -> EventRow(e, e.timeText(d, zone, allDayText), null, onClick = { onOpen(e) }) }
+                        dayEvents.forEach { e -> EventRow(e, if (e.payment != null) paymentText else e.timeText(d, zone, allDayText), null, onClick = { onOpen(e) }) }
                     }
                 }
                 HorizontalDivider()
@@ -501,6 +515,20 @@ private fun MonthView(date: LocalDate, today: LocalDate, zone: TimeZone, events:
 }
 
 private val CELL_SHAPE = RoundedCornerShape(8.dp)
+
+/** Точка цвета календаря; у платежа — значок денег. */
+@Composable
+private fun EventMark(e: CalendarEvent) {
+    if (e.payment != null) Icon(QuazioIcons.Cash, contentDescription = null, tint = colorOf(e.color), modifier = Modifier.size(16.dp))
+    else ColorDot(e.color)
+}
+
+/** Неподтверждённый платёж (режим «спрашивать») — с пометкой. */
+@Composable
+private fun eventTitle(e: CalendarEvent): String {
+    val title = e.title.ifBlank { "—" }
+    return if (e.payment?.waiting == true) "$title · ${stringResource(Res.string.cal_payment_waiting)}" else title
+}
 
 private val WIDE_HEADER = 600.dp
 private val WEEK_DAY_COLUMN = 84.dp

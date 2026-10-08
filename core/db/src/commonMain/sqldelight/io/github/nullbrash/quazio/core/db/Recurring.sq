@@ -1,0 +1,28 @@
+insertRecurring:
+INSERT INTO recurring(id, account_id, name, kind, amount_minor, currency, fin_account_id, to_fin_account_id, category_id,
+    rrule, start_date, end_date, mode, remind_days, paused, active_from, hlc)
+VALUES (?, ?, ?, ?, ?, 'RUB', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateRecurring:
+UPDATE recurring SET name = :name, kind = :kind, amount_minor = :amount, fin_account_id = :finAccountId,
+    to_fin_account_id = :toFinAccountId, category_id = :categoryId, rrule = :rrule, start_date = :startDate,
+    end_date = :endDate, mode = :mode, remind_days = :remindDays, paused = :paused, active_from = :activeFrom, hlc = :hlc
+WHERE id = :id;
+
+setRecurringDeleted:
+UPDATE recurring SET deleted = 1, hlc = :hlc WHERE id = :id;
+
+recurringById:
+SELECT * FROM recurring WHERE id = ?;
+
+recurringOf:
+SELECT * FROM recurring WHERE account_id = ? AND deleted = 0 ORDER BY name;
+
+-- Операции платежей (и удалённые: удалённая или пропущенная больше не спрашивается).
+recurringTxns:
+SELECT id, deleted FROM txn WHERE account_id = ? AND source = 'recurring';
+
+insertTxnWithId:
+INSERT INTO txn(id, account_id, kind, amount_minor, currency, fin_account_id, to_fin_account_id, category_id, merchant_id,
+    occurred_at, tz, description, note, source, dedup_key, hlc)
+VALUES (?, ?, ?, ?, 'RUB', ?, ?, ?, ?, ?, ?, ?, ?, 'recurring', ?, ?);

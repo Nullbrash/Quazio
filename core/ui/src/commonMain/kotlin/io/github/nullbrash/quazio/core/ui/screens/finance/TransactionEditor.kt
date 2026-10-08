@@ -89,6 +89,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import io.github.nullbrash.quazio.core.ui.res.quick_draft
+import io.github.nullbrash.quazio.core.ui.res.rec_make
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
@@ -120,6 +121,9 @@ internal fun TransactionEditor(
     onClose: (changed: Boolean) -> Unit,
     prefill: EditorPrefill? = null,
     onDraft: ((TransactionDraft) -> Unit)? = null,
+    title: StringResource? = null,
+    /** «Сделать регулярной» — у сохранённой операции: её поля уходят в окно регулярного платежа. */
+    onMakeRecurring: ((TransactionDraft) -> Unit)? = null,
 ) {
     SystemBack { onClose(false) }
     val scope = rememberCoroutineScope()
@@ -241,7 +245,7 @@ internal fun TransactionEditor(
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onClose(false) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
-            Text(stringResource(if (onDraft != null) Res.string.quick_draft else if (txnId == null) Res.string.txn_new else Res.string.txn_edit), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(stringResource(title ?: if (onDraft != null) Res.string.quick_draft else if (txnId == null) Res.string.txn_new else Res.string.txn_edit), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             if (txnId != null) TextButton(onClick = { confirmDelete = true }) { Text(stringResource(Res.string.txn_delete)) }
             Button(onClick = save, modifier = Modifier.padding(end = 8.dp)) { Text(stringResource(Res.string.txn_save)) }
         }
@@ -339,6 +343,15 @@ internal fun TransactionEditor(
             Column {
                 FinField(note, { note = it }, stringResource(Res.string.txn_note), Modifier.fillMaxWidth(), singleLine = false)
                 Text(stringResource(Res.string.txn_note_hint), style = MaterialTheme.typography.bodySmall)
+            }
+            if (onMakeRecurring != null && txnId != null && kind != EditorKind.ADJUSTMENT) {
+                OutlinedButton(onClick = {
+                    val fields = EditorPrefill(kind, sign, amountMinor, finAccountId, secondAccountId, categoryId, merchant, description, tagIds, dateTime, note)
+                    when (val c = fields.check(null, zone, ::isDebt)) {
+                        is DraftCheck.Bad -> scope.launch { error = getString(c.error) }
+                        is DraftCheck.Ok -> onMakeRecurring(c.draft)
+                    }
+                }) { Text(stringResource(Res.string.rec_make)) }
             }
         }
     }

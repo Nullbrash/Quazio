@@ -71,6 +71,8 @@ import io.github.nullbrash.quazio.core.ui.res.fin_debt_return_to_org
 import io.github.nullbrash.quazio.core.ui.res.fin_debt_return_to_person
 import io.github.nullbrash.quazio.core.ui.res.fin_debt_returns
 import io.github.nullbrash.quazio.core.ui.res.fin_tags
+import io.github.nullbrash.quazio.core.ui.res.rec_menu
+import io.github.nullbrash.quazio.core.ui.res.rec_record
 import io.github.nullbrash.quazio.core.ui.res.txn_debt
 import io.github.nullbrash.quazio.core.ui.res.fin_empty_month
 import io.github.nullbrash.quazio.core.ui.res.fin_expense
@@ -92,6 +94,8 @@ import io.github.nullbrash.quazio.feature.finance.FinAccountType
 import io.github.nullbrash.quazio.feature.finance.Tag
 import io.github.nullbrash.quazio.feature.finance.TagKind
 import io.github.nullbrash.quazio.feature.finance.Totals
+import io.github.nullbrash.quazio.feature.finance.Occurrence
+import io.github.nullbrash.quazio.feature.finance.TransactionDraft
 import io.github.nullbrash.quazio.feature.finance.Transaction
 import io.github.nullbrash.quazio.feature.finance.TxnKind
 import io.github.nullbrash.quazio.feature.finance.formatMoney
@@ -114,6 +118,8 @@ internal data class FinanceData(
     val categories: List<CategoryNode>,
     val tags: List<Tag>,
     val calculatorOnNew: Boolean,
+    /** Регулярные платежи «спрашивать», чей день наступил. */
+    val pending: List<Occurrence> = emptyList(),
 )
 
 private sealed interface FinanceView {
@@ -123,6 +129,11 @@ private sealed interface FinanceView {
     data object Tags : FinanceView
     data object AccountsOrder : FinanceView
     data object Accounts : FinanceView
+    data object Recurring : FinanceView
+    /** [from] — «Сделать регулярной» из операции. */
+    data class RecurringEdit(val id: String?, val from: TransactionDraft?) : FinanceView
+    /** «Записать» повторение платежа: окно операции с полями платежа. */
+    data class RecordOccurrence(val occurrence: Occurrence) : FinanceView
     /** Одна операция из быстрого ввода — сразу окно операции с заполненными полями. */
     data class QuickEditor(val original: QuickDraft, val prefill: EditorPrefill) : FinanceView
     /** Пост из нескольких строк — список черновиков. */
@@ -130,7 +141,13 @@ private sealed interface FinanceView {
 }
 
 @Composable
-fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.LocalDate) -> Unit)? = null) {
+fun FinanceScreen(
+    services: AppServices,
+    onOpenCalendar: ((kotlinx.datetime.LocalDate) -> Unit)? = null,
+    /** Платёж, открытый из календаря. */
+    openRecurring: String? = null,
+    onRecurringHandled: () -> Unit = {},
+) {
     var month by remember { mutableStateOf(currentMonth()) }
     var reload by remember { mutableIntStateOf(0) }
     var data by remember { mutableStateOf<FinanceData?>(null) }
@@ -148,6 +165,8 @@ fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.Loca
             val finance = services.finance
             val accountId = services.accounts.current().id
             finance.ensureDefaults(accountId)
+            // «Записывать сам» — за наступившие дни, в том числе пока Quazio был закрыт.
+            finance.recurring.recordDue(accountId, currentZone().id)
             val (from, to) = monthRange(month, currentZone())
             val accounts = finance.accounts(accountId)
             FinanceData(
@@ -159,6 +178,7 @@ fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.Loca
                 categories = finance.categories(accountId),
                 tags = finance.tags(accountId),
                 calculatorOnNew = finance.openCalculatorOnNew,
+                pending = finance.recurring.pending(accountId),
             )
         }
     }
@@ -188,6 +208,13 @@ fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.Loca
         scope.launch { openQuick(text) }
     }
 
+    LaunchedEffect(openRecurring) {
+        if (openRecurring != null) {
+            view = FinanceView.RecurringEdit(openRecurring, null)
+            onRecurringHandled()
+        }
+    }
+
     when (val v = view) {
         is FinanceView.Editor -> TransactionEditor(
             services = services,
@@ -197,7 +224,32 @@ fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.Loca
                 view = FinanceView.Main
                 if (changed) reload++
             },
+            onMakeRecurring = { draft -> view = FinanceView.RecurringEdit(null, draft) },
         )
+        FinanceView.Recurring -> RecurringListScreen(services, d, onBack = { view = FinanceView.Main }) { id ->
+            view = FinanceView.RecurringEdit(id, null)
+        }
+        is FinanceView.RecurringEdit -> RecurringEditor(services, d, v.id, v.from) { changed ->
+            view = if (v.from != null) FinanceView.Main else FinanceView.Recurring
+            if (changed) reload++
+        }
+        is FinanceView.RecordOccurrence -> {
+            val o = v.occurrence
+            val isDebt: (String?) -> Boolean = { id -> d.accounts.firstOrNull { it.id == id }?.type == FinAccountType.DEBT }
+            TransactionEditor(
+                services = services, data = d, txnId = null, title = Res.string.rec_record,
+                prefill = services.finance.recurring.defaultTxn(o.recurring, o.date, currentZone().id).toPrefill(isDebt),
+                onDraft = { draft ->
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) { runCatching { services.finance.recurring.record(d.accountId, o.recurring.id, o.date, draft) } }
+                        result.onFailure { exportMessage = it.message }
+                        view = FinanceView.Main
+                        reload++
+                    }
+                },
+                onClose = { view = FinanceView.Main },
+            )
+        }
         FinanceView.Categories -> CategoriesScreen(services, d.accountId) {
             view = FinanceView.Main
             reload++
@@ -241,6 +293,14 @@ fun FinanceScreen(services: AppServices, onOpenCalendar: ((kotlinx.datetime.Loca
                 onAccounts = { view = FinanceView.Accounts },
                 onCategories = { view = FinanceView.Categories },
                 onTags = { view = FinanceView.Tags },
+                onRecurring = { view = FinanceView.Recurring },
+                onRecord = { view = FinanceView.RecordOccurrence(it) },
+                onSkip = { o ->
+                    scope.launch {
+                        withContext(Dispatchers.IO) { services.finance.recurring.skip(d.accountId, o.recurring.id, o.date, currentZone().id) }
+                        reload++
+                    }
+                },
                 onMonthClick = onOpenCalendar?.let { open -> { open(kotlinx.datetime.LocalDate(month.year, month.month, 1)) } },
                 onExport = fileSaver?.let { saver ->
                     {
@@ -301,6 +361,9 @@ private fun FinanceMain(
     onAccounts: () -> Unit,
     onCategories: () -> Unit,
     onTags: () -> Unit,
+    onRecurring: () -> Unit,
+    onRecord: (Occurrence) -> Unit,
+    onSkip: (Occurrence) -> Unit,
     onMonthClick: (() -> Unit)?,
     onExport: (() -> Unit)?,
 ) {
@@ -327,6 +390,7 @@ private fun FinanceMain(
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text(stringResource(Res.string.fin_categories)) }, onClick = { menu = false; onCategories() })
                         DropdownMenuItem(text = { Text(stringResource(Res.string.fin_tags)) }, onClick = { menu = false; onTags() })
+                        DropdownMenuItem(text = { Text(stringResource(Res.string.rec_menu)) }, onClick = { menu = false; onRecurring() })
                         if (onExport != null) {
                             DropdownMenuItem(text = { Text(stringResource(Res.string.fin_export_csv)) }, onClick = { menu = false; onExport() })
                         }
@@ -355,6 +419,7 @@ private fun FinanceMain(
                 TotalTile(stringResource(Res.string.fin_net), formatMoney(data.totals.net), null, Modifier.weight(1f))
             }
         }
+        if (data.pending.isNotEmpty()) item { PendingPayments(data.pending, onRecord, onSkip) }
         if (data.transactions.isEmpty()) {
             item {
                 Text(stringResource(Res.string.fin_empty_month), modifier = Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)

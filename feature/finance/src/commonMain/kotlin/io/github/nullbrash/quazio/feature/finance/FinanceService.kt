@@ -24,6 +24,9 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
     private val q get() = db.financeQueries
     private val changeLog = ChangeLog(db)
 
+    /** Регулярные платежи — та же база и те же часы. */
+    val recurring = RecurringService(db, clock)
+
     // ===== Настройки этого устройства =====
 
     /** Открывать калькулятор сразу при добавлении операции (по умолчанию — да). */
@@ -436,6 +439,24 @@ class FinanceService(private val db: QuazioDatabase, private val clock: DeviceCl
             r.word to WordRule(r.kind?.let { k -> QuickKind.entries.firstOrNull { it.name == k } }, r.category_id, r.fin_account_id, r.second_fin_account_id)
         }
         return QuickVocabulary(accounts, categories, merchants, tagNames.values.toList(), rules)
+    }
+
+    /**
+     * Категория по названию (регулярный платёж): последняя операция с таким магазином, иначе
+     * то, что знает быстрый ввод (имя категории — подкатегория предпочитается, память слов,
+     * известные марки). Только категория нужного вида; null — подсказать нечего.
+     */
+    fun suggestCategory(accountId: String, name: String, income: Boolean, today: kotlinx.datetime.LocalDate): String? {
+        val clean = name.trim().takeIf { it.isNotEmpty() } ?: return null
+        val kind = if (income) CategoryKind.INCOME.dbValue else CategoryKind.EXPENSE.dbValue
+        fun ok(id: String?) = id != null && q.categoryById(id).executeAsOneOrNull()?.let { it.deleted == 0L && it.kind == kind } == true
+        q.merchantByNormalized(accountId, normalize(clean)).executeAsOneOrNull()
+            ?.let { q.lastTxnByMerchant(accountId, it.id).executeAsOneOrNull()?.category_id }
+            ?.takeIf(::ok)?.let { return it }
+        // Разбор как «<название> 1»: сумма нужна разбору, сама она не важна.
+        val line = io.github.nullbrash.quazio.engine.quickinput.QuickParser.parse("$clean 1", quickVocabulary(accountId), today).firstOrNull()
+        val draft = (line as? io.github.nullbrash.quazio.engine.quickinput.QuickLine.Operation)?.draft ?: return null
+        return draft.categoryId?.takeIf(::ok)
     }
 
     /** Запомнить правку черновика: заданные поля [change] заменяют прежние, остальные остаются. */

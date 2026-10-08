@@ -21,6 +21,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.core.accounts)
             api(projects.engine.quickinput)
+            implementation(projects.engine.recurrence)
             api(libs.kotlinx.datetime)
         }
         commonTest.dependencies {
