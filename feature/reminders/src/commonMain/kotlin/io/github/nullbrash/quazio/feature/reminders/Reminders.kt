@@ -59,7 +59,8 @@ class ReminderService(
     val settings: ReminderSettings,
     private val store: KeyValueStore,
     private val recurring: RecurringService,
-    private val accountId: () -> String,
+    /** null — аккаунта ещё нет: фоновые проверки могут успеть раньше первого запуска оболочки. */
+    private val accountId: () -> String?,
     private val calendar: CalendarSource?,
     private val calendarPrefs: CalendarPrefs?,
     private val calendarReadable: () -> Boolean = { true },
@@ -73,10 +74,11 @@ class ReminderService(
         val lastDay = Instant.fromEpochMilliseconds(to).toLocalDateTime(z).date.plus(DatePeriod(days = 1))
         val out = ArrayList<Reminder>()
         val s = settings
-        if (s.paymentsEnabled) {
+        val account = accountId()
+        if (s.paymentsEnabled && account != null) {
             val maxBefore = 7
             val time = s.paymentsTime
-            recurring.occurrences(accountId(), firstDay, lastDay.plus(DatePeriod(days = maxBefore + 1)), firstDay)
+            recurring.occurrences(account, firstDay, lastDay.plus(DatePeriod(days = maxBefore + 1)), firstDay)
                 .filter { it.state == OccurrenceState.PLANNED || it.state == OccurrenceState.PENDING }
                 .forEach { o ->
                     val r = o.recurring
@@ -165,9 +167,10 @@ class ReminderService(
         val from = millis(date, LocalTime(0, 0), z)
         val to = millis(date.plus(DatePeriod(days = 1)), LocalTime(0, 0), z)
         val events = events(from, to) { _, shown -> shown }.sortedWith(compareBy({ !it.allDay }, { it.start }))
-        val payments = recurring.occurrences(accountId(), date, date.plus(DatePeriod(days = 1)), date)
+        val account = accountId() ?: return DaySummary(events, emptyList(), 0)
+        val payments = recurring.occurrences(account, date, date.plus(DatePeriod(days = 1)), date)
             .filter { it.state == OccurrenceState.PLANNED || it.state == OccurrenceState.PENDING }
-        return DaySummary(events, payments, recurring.pending(accountId(), date).size)
+        return DaySummary(events, payments, recurring.pending(account, date).size)
     }
 
     /** Текущее и следующее событие (со временем) — для постоянного уведомления. */

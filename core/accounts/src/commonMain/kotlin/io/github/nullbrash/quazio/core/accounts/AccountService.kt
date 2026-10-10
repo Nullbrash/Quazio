@@ -94,7 +94,8 @@ class AccountService(
         return Account(id, clean, now, AccessLevel.FULL)
     }
 
-    private fun currentOrNull(): Account? {
+    /** null — аккаунтов ещё нет (первый запуск, оболочка не дошла до [initialize]). */
+    fun currentOrNull(): Account? {
         val id = db.appStateQueries.get(KEY_CURRENT_ACCOUNT).executeAsOneOrNull() ?: return null
         val row = db.accountQueries.byId(id).executeAsOneOrNull()?.takeIf { it.deleted == 0L } ?: return null
         return Account(row.id, row.name, row.created_at, accessOf(row.id))

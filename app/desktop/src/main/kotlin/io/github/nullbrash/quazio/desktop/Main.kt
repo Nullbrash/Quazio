@@ -62,7 +62,7 @@ private val services: AppServices by lazy {
         calendar = calendar,
         calendarPrefs = calendarPrefs,
         reminders = ReminderService(ProfileStore(db), ReminderSettings(state), state, finance.recurring,
-            { accounts.current().id }, calendar, calendarPrefs),
+            { accounts.currentOrNull()?.id }, calendar, calendarPrefs),
     )
     DevStress.seedIfRequested(services)
     services

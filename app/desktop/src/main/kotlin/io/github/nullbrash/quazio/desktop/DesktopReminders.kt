@@ -5,6 +5,7 @@ import androidx.compose.ui.window.TrayState
 import io.github.nullbrash.quazio.core.ui.ReminderPlatform
 import io.github.nullbrash.quazio.core.ui.reminderText
 import io.github.nullbrash.quazio.feature.reminders.ReminderService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
@@ -26,11 +27,19 @@ internal class DesktopReminders : ReminderPlatform {
     /** Раз в полминуты (и сразу после изменений) показать наступившие напоминания. */
     suspend fun run(reminders: () -> ReminderService, tray: TrayState) {
         while (true) {
-            val due = withContext(Dispatchers.IO) {
-                val r = reminders()
-                if (!r.settings.desktopEnabled) return@withContext emptyList()
-                val now = System.currentTimeMillis()
-                r.due(now).also { r.markShown(it, now) }.map { reminderText(it, r) }
+            // Цикл живёт в композиции окна: необработанная ошибка здесь закрыла бы всё приложение.
+            val due = try {
+                withContext(Dispatchers.IO) {
+                    val r = reminders()
+                    if (!r.settings.desktopEnabled) return@withContext emptyList()
+                    val now = System.currentTimeMillis()
+                    r.due(now).also { r.markShown(it, now) }.map { reminderText(it, r) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Quazio: reminders check failed: $e")
+                emptyList()
             }
             due.forEach { (title, body) -> tray.sendNotification(Notification(title, body, Notification.Type.Info)) }
             withTimeoutOrNull(CHECK_MS) { wake.receive() }

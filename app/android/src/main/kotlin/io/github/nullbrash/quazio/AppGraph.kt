@@ -52,7 +52,7 @@ object AppGraph {
             // Напоминания читают календари в фоне — только если доступ дан.
             widgetPrefs = WidgetPrefs(state),
             reminders = ReminderService(ProfileStore(db), ReminderSettings(state), state, finance.recurring,
-                { accounts.current().id }, calendar, calendarPrefs, calendarReadable = { AndroidCalendarSource.hasPermission(context) }),
+                { accounts.currentOrNull()?.id }, calendar, calendarPrefs, calendarReadable = { AndroidCalendarSource.hasPermission(context) }),
         )
     }
 }

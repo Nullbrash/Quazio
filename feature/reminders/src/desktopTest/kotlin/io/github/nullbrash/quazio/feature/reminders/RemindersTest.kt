@@ -97,6 +97,15 @@ class RemindersTest {
     }
 
     @Test
+    fun noAccountYetMeansNothingToRemind() {
+        // Первый запуск: фоновая проверка напоминаний успела раньше, чем оболочка создала аккаунт.
+        val early = ReminderService(ProfileStore(db), settings, store, finance.recurring, { null }, source, prefs, zone = { moscow })
+        internet()
+        assertTrue(early.due(at("2026-10-15T10:01")).isEmpty())
+        assertTrue(early.summary(LocalDate.parse("2026-10-15")).payments.isEmpty())
+    }
+
+    @Test
     fun dueShowsOnceAndSnoozeComesBack() {
         internet(remindDays = 0)
         reminders.due(at("2026-10-01T00:00")) // первый запуск — точка отсчёта
