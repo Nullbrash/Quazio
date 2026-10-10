@@ -5,6 +5,7 @@ import io.github.nullbrash.quazio.core.lock.AppLock
 import io.github.nullbrash.quazio.core.lock.PasswordVault
 import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
 import io.github.nullbrash.quazio.feature.calendar.CalendarSource
+import io.github.nullbrash.quazio.feature.calendar.WidgetPrefs
 import io.github.nullbrash.quazio.feature.finance.FinanceService
 import io.github.nullbrash.quazio.feature.reminders.ReminderService
 
@@ -26,4 +27,6 @@ class AppServices(
     val calendarPrefs: CalendarPrefs? = null,
     /** Напоминания: платежи, сводка дня, «до конца события» (показывает платформа). */
     val reminders: ReminderService? = null,
+    /** Настройки виджета-циферблата (Android); null — виджета на этой платформе нет. */
+    val widgetPrefs: WidgetPrefs? = null,
 )

@@ -10,6 +10,7 @@ import io.github.nullbrash.quazio.core.ui.QuazioApp
 import io.github.nullbrash.quazio.core.ui.OpenRequest
 import io.github.nullbrash.quazio.core.ui.OpenRequests
 import io.github.nullbrash.quazio.reminders.AndroidReminderPlatform
+import io.github.nullbrash.quazio.widget.DialWidgets
 import kotlinx.datetime.LocalDate
 
 // FragmentActivity, а не ComponentActivity: системному окну входа (BiometricPrompt) нужны фрагменты.
@@ -40,6 +41,7 @@ class MainActivity : FragmentActivity() {
                 calendarAccess = calendarAccess,
                 reminderPlatform = reminderPlatform,
                 openRequests = openRequests,
+                widgetUpdater = { DialWidgets.updateAsync(applicationContext) },
             )
         }
     }
@@ -57,12 +59,14 @@ class MainActivity : FragmentActivity() {
             val date = runCatching { LocalDate.parse(v.substringAfter('|')) }.getOrNull() ?: return null
             return OpenRequest.RecordPayment(v.substringBefore('|'), date)
         }
+        if (intent.getBooleanExtra(EXTRA_NEW_EVENT, false)) return OpenRequest.NewEvent
         return intent.getStringExtra(EXTRA_OPEN_DAY)?.let { v -> runCatching { OpenRequest.CalendarDay(LocalDate.parse(v)) }.getOrNull() }
     }
 
     companion object {
         const val EXTRA_OPEN_RECORD = "io.github.nullbrash.quazio.OPEN_RECORD"
         const val EXTRA_OPEN_DAY = "io.github.nullbrash.quazio.OPEN_DAY"
+        const val EXTRA_NEW_EVENT = "io.github.nullbrash.quazio.NEW_EVENT"
 
         /** Текст из «В учёт Quazio» / «Поделиться» — передаёт [QuickTextActivity]. */
         const val EXTRA_QUICK_TEXT = "io.github.nullbrash.quazio.QUICK_TEXT"

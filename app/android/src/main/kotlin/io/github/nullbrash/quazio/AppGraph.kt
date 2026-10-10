@@ -13,6 +13,7 @@ import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.appStateStore
 import io.github.nullbrash.quazio.feature.calendar.AndroidCalendarSource
 import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
+import io.github.nullbrash.quazio.feature.calendar.WidgetPrefs
 import io.github.nullbrash.quazio.feature.reminders.ProfileStore
 import io.github.nullbrash.quazio.feature.reminders.ReminderService
 import io.github.nullbrash.quazio.feature.reminders.ReminderSettings
@@ -49,6 +50,7 @@ object AppGraph {
             calendar = calendar,
             calendarPrefs = calendarPrefs,
             // Напоминания читают календари в фоне — только если доступ дан.
+            widgetPrefs = WidgetPrefs(state),
             reminders = ReminderService(ProfileStore(db), ReminderSettings(state), state, finance.recurring,
                 { accounts.current().id }, calendar, calendarPrefs, calendarReadable = { AndroidCalendarSource.hasPermission(context) }),
         )

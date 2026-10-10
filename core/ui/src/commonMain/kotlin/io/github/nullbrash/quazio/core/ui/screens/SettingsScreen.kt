@@ -41,6 +41,10 @@ fun SettingsScreen(versionName: String, services: AppServices, deviceAuth: Devic
             RemindersSection(services)
             HorizontalDivider()
         }
+        if (services.widgetPrefs != null && io.github.nullbrash.quazio.core.ui.LocalWidgetUpdater.current != null) {
+            WidgetSection(services.widgetPrefs)
+            HorizontalDivider()
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.settings_about), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(Res.string.app_name), style = MaterialTheme.typography.headlineSmall)

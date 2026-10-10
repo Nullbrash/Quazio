@@ -232,6 +232,12 @@
     <string name="rec_remind_day">только в день платежа</string>
     <string name="rec_remind_before">за %1$d дн. и в день</string>
     <string name="rem_title">Напоминания</string>
+    <string name="widget_title">Виджет на рабочем столе</string>
+    <string name="widget_hint">Циферблат дня на рабочем столе. Добавить: долгое нажатие на пустом месте рабочего стола → «Виджеты» → Quazio. Размер — растягиванием. Настройки ниже — общие для всех виджетов.</string>
+    <string name="widget_24">Сутки целиком (24 часа)</string>
+    <string name="widget_opacity">Непрозрачность круга: %1$d %%</string>
+    <string name="widget_until">Показывать «сколько осталось» до следующего события</string>
+    <string name="widget_buttons">Кнопки «календарь» и «+»</string>
     <string name="rem_payments">О регулярных платежах</string>
     <string name="rem_payments_hint">Накануне и в день платежа (за сколько дней — в окне платежа). Без сумм: уведомление видно, не входя в Quazio.</string>
     <string name="rem_summary">Утренняя сводка дня</string>

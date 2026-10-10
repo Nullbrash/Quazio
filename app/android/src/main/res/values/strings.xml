@@ -3,4 +3,8 @@
     <string name="auth_title">Вход в Quazio</string>
     <string name="auth_subtitle">Подтвердите, что это вы</string>
     <string name="quick_text_label">В учёт Quazio</string>
+    <string name="widget_label">Циферблат дня Quazio</string>
+    <string name="widget_description">События дня на циферблате: сколько осталось до следующего, граница завтрашнего дня</string>
+    <string name="widget_open_calendar">Открыть календарь</string>
+    <string name="widget_new_event">Новое событие</string>
 </resources>

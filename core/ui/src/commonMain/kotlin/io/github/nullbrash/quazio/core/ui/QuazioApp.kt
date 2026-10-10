@@ -78,7 +78,9 @@ fun QuazioApp(
     calendarAccess: CalendarAccess? = null,
     reminderPlatform: ReminderPlatform? = null,
     openRequests: OpenRequests? = null,
+    widgetUpdater: (() -> Unit)? = null,
 ) = CompositionLocalProvider(
+    LocalWidgetUpdater provides widgetUpdater,
     LocalFileSaver provides fileSaver,
     LocalIncomingText provides incoming,
     LocalCalendarAccess provides calendarAccess,
@@ -124,13 +126,18 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
     var financeJump by remember { mutableStateOf<String?>(null) }
     // «Открыть» в уведомлении о платеже — окно «Записать» в финансах (под замком).
     var recordJump by remember { mutableStateOf<OpenRequest.RecordPayment?>(null) }
+    // «+» на виджете — окно нового события в календаре.
+    var newEventJump by remember { mutableStateOf(false) }
+    var dayJump by remember { mutableStateOf<LocalDate?>(null) }
     val openRequests = LocalOpenRequests.current
     val openRequest = openRequests?.request?.collectAsState()?.value
     LaunchedEffect(openRequest) {
         when (val r = openRequest) {
             null -> Unit
             is OpenRequest.RecordPayment -> { recordJump = r; current = Destination.FINANCE }
-            is OpenRequest.CalendarDay -> { if (services.calendar != null) { calendarJump = r.date; current = Destination.CALENDAR } }
+            // Виджет и уведомления — день с циферблатом (нажатие на месяц в финансах — месяц).
+            is OpenRequest.CalendarDay -> { if (services.calendar != null) { dayJump = r.date; current = Destination.CALENDAR } }
+            OpenRequest.NewEvent -> { if (services.calendar != null) { newEventJump = true; current = Destination.CALENDAR } }
         }
         if (openRequest != null) openRequests.consume()
     }
@@ -177,7 +184,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                 },
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
-                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment, recordJump, { recordJump = null })
+                    DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment, recordJump, { recordJump = null }, newEventJump, { newEventJump = false }, dayJump, { dayJump = null })
                 }
             }
 
@@ -194,7 +201,7 @@ private fun Shell(versionName: String, services: AppServices, deviceAuth: Device
                             )
                         }
                     }
-                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment, recordJump, { recordJump = null }) }
+                    Box(Modifier.fillMaxSize()) { DestinationContent(current, versionName, services, deviceAuth, calendarJump, { calendarJump = null }, openCalendar, calendarCache, financeJump, { financeJump = null }, openPayment, recordJump, { recordJump = null }, newEventJump, { newEventJump = false }, dayJump, { dayJump = null }) }
                 }
             }
         }
@@ -216,6 +223,10 @@ private fun DestinationContent(
     openPayment: (String) -> Unit,
     recordJump: OpenRequest.RecordPayment?,
     onRecordJumpHandled: () -> Unit,
+    newEventJump: Boolean,
+    onNewEventHandled: () -> Unit,
+    dayJump: LocalDate?,
+    onDayJumpHandled: () -> Unit,
 ) {
     val screen: @Composable () -> Unit = {
         when (destination) {
@@ -231,6 +242,8 @@ private fun DestinationContent(
                     source, prefs, calendarJump, onJumpHandled, calendarCache,
                     payments = { from, to -> paymentEvents(services, from, to) },
                     onOpenPayment = openPayment,
+                    newEvent = newEventJump, onNewEventHandled = onNewEventHandled,
+                    dayJump = dayJump, onDayJumpHandled = onDayJumpHandled,
                 )
             }
             Destination.SETTINGS -> SettingsScreen(versionName, services, deviceAuth)

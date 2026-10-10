@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import io.github.nullbrash.quazio.AppGraph
 import io.github.nullbrash.quazio.feature.reminders.Reminder
+import io.github.nullbrash.quazio.widget.DialWidgets
 import kotlinx.datetime.TimeZone
 import kotlin.concurrent.thread
 
@@ -27,6 +28,8 @@ class ReminderReceiver : BroadcastReceiver() {
                     SNOOZE -> snooze(app, intent.getStringExtra(EXTRA_KEY))
                 }
                 ReminderEngine.dispatch(app)
+                // Перезагрузка, обновление, смена времени: будильник виджета потерян или устарел.
+                if (intent.action != TICK && intent.action != RECORD && intent.action != SNOOZE) DialWidgets.updateAll(app)
             } finally {
                 pending.finish()
             }

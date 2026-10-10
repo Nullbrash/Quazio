@@ -1,6 +1,7 @@
 package io.github.nullbrash.quazio.core.ui
 
 import io.github.nullbrash.quazio.core.ui.res.Res
+import io.github.nullbrash.quazio.core.ui.res.cal_tomorrow
 import io.github.nullbrash.quazio.core.ui.res.rem_end_body
 import io.github.nullbrash.quazio.core.ui.res.rem_channel_now
 import io.github.nullbrash.quazio.core.ui.res.rem_channel_alarm
@@ -87,4 +88,9 @@ object ReminderLabels {
     suspend fun channelReminders() = getString(Res.string.rem_channel_reminders)
     suspend fun channelAlarm() = getString(Res.string.rem_channel_alarm)
     suspend fun channelNow() = getString(Res.string.rem_channel_now)
+}
+
+/** Подписи виджета-циферблата для кода платформы. */
+object WidgetLabels {
+    suspend fun tomorrow() = getString(Res.string.cal_tomorrow)
 }

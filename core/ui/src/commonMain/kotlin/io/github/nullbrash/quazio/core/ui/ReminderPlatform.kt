@@ -31,10 +31,15 @@ interface ReminderPlatform {
 
 val LocalReminderPlatform = staticCompositionLocalOf<ReminderPlatform?> { null }
 
+/** Перерисовать виджеты на рабочем столе (поменялись их настройки); null — виджетов нет (ПК). */
+val LocalWidgetUpdater = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 /** Куда открыть Quazio по нажатию на уведомление: «Записать» платёж, день календаря. */
 sealed interface OpenRequest {
     data class RecordPayment(val recurringId: String, val date: kotlinx.datetime.LocalDate) : OpenRequest
     data class CalendarDay(val date: kotlinx.datetime.LocalDate) : OpenRequest
+    /** «+» на виджете — окно нового события. */
+    data object NewEvent : OpenRequest
 }
 
 class OpenRequests {

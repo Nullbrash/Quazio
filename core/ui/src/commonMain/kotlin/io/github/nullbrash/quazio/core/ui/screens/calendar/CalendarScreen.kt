@@ -133,6 +133,12 @@ fun CalendarScreen(
     /** Регулярные платежи на отрезок дат [from, toExclusive) — слой поверх календарей. */
     payments: ((LocalDate, LocalDate) -> List<CalendarEvent>)? = null,
     onOpenPayment: (String) -> Unit = {},
+    /** «+» на виджете: сразу окно нового события (ближайший полный час). */
+    newEvent: Boolean = false,
+    onNewEventHandled: () -> Unit = {},
+    /** Виджет, уведомление сводки — открыть этот день (циферблат). */
+    dayJump: LocalDate? = null,
+    onDayJumpHandled: () -> Unit = {},
 ) {
     val zone = remember { TimeZone.currentSystemDefault() }
     val access = LocalCalendarAccess.current
@@ -156,6 +162,12 @@ fun CalendarScreen(
     var linkProblem by remember { mutableStateOf<LinkStatus?>(null) }
     val refreshScope = rememberCoroutineScope()
 
+    LaunchedEffect(newEvent) {
+        if (newEvent) {
+            target = EventTarget(null, null, false, (Clock.System.now().toEpochMilliseconds() / HOUR_MS + 1) * HOUR_MS)
+            onNewEventHandled()
+        }
+    }
     LaunchedEffect(jumpTo) {
         if (jumpTo != null) {
             date = jumpTo
@@ -188,6 +200,12 @@ fun CalendarScreen(
             date = d
         }
         view = CalendarView.DAY
+    }
+
+    LaunchedEffect(dayJump) {
+        val d = dayJump ?: return@LaunchedEffect
+        openDay(d)
+        onDayJumpHandled()
     }
 
     val dayDate = millisToLocal(cursor, zone).date

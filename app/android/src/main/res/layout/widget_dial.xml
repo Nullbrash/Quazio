@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Виджет-циферблат: круг картинкой (дуги RemoteViews не рисует) и кнопки «календарь» и «+». -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/widget_dial"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/widget_label"
+        android:scaleType="fitCenter" />
+
+    <ImageView
+        android:id="@+id/widget_calendar"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="bottom|start"
+        android:background="@drawable/widget_button_bg"
+        android:contentDescription="@string/widget_open_calendar"
+        android:padding="7dp"
+        android:src="@drawable/ic_widget_calendar" />
+
+    <ImageView
+        android:id="@+id/widget_add"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="bottom|end"
+        android:background="@drawable/widget_button_bg"
+        android:contentDescription="@string/widget_new_event"
+        android:padding="7dp"
+        android:src="@drawable/ic_widget_add" />
+</FrameLayout>
