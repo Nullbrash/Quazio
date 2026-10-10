@@ -20,6 +20,7 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = appVersion.versionCode
         versionName = appVersion.name
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
@@ -56,4 +57,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment.ktx)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.kotlin.test)
 }

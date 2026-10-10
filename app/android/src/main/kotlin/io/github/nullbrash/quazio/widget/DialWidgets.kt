@@ -70,7 +70,7 @@ internal object DialWidgets {
             val side = sideDp(mgr.getAppWidgetOptions(id))
             val px = (side * density).toInt().coerceIn(MIN_PX, MAX_PX)
             val views = RemoteViews(context.packageName, R.layout.widget_dial)
-            views.setImageViewBitmap(R.id.widget_dial, DialBitmap.render(layout, px, prefs.circleOpacity, center, date, until, tomorrow,
+            views.setImageViewBitmap(R.id.widget_dial, DialBitmap.render(layout, px, prefs.style, center, date, until, tomorrow,
                 distinguish = services.calendarPrefs?.distinguishNeighbours ?: true))
             views.setOnClickPendingIntent(R.id.widget_dial, open(context, NEW_EVENT_NO))
             val buttons = if (prefs.showButtons) View.VISIBLE else View.GONE
