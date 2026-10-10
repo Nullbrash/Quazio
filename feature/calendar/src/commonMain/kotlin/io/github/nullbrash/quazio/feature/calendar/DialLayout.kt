@@ -18,6 +18,11 @@ data class DialSector(
     val sweep: Float,
     /** Пересекающиеся события — на разных «дорожках» (0 — внешняя). */
     val lane: Int,
+    /**
+     * Сколько дорожек в его группе пересекающихся событий: сектор толщиной в полосу / [lanes].
+     * Одно пересечение в обед не делает тонкими все сектора дня (нашлось в перегруженном дне).
+     */
+    val lanes: Int = 1,
 )
 
 data class HourLabel(val hour: Int, val angle: Float)
@@ -67,17 +72,32 @@ object DialLayouts {
         // События на весь день по кругу не рисуются — у них нет времени (показываются списком).
         val timed = events.filter { !it.allDay && it.end > windowStart && it.start < windowEnd && it.end > it.start }
             .sortedWith(compareBy({ it.start }, { -it.end }))
-        val laneEnds = ArrayList<Long>()
-        val sectors = timed.map { e ->
+        // Группы пересекающихся событий (касание концами — не пересечение): дорожки — внутри группы.
+        val sectors = ArrayList<DialSector>()
+        var maxUsed = 1
+        var group = ArrayList<DialSector>()
+        var groupEnd = Long.MIN_VALUE
+        var laneEnds = ArrayList<Long>()
+        fun closeGroup() {
+            val n = laneEnds.size.coerceAtLeast(1)
+            maxUsed = maxOf(maxUsed, n)
+            group.forEach { sectors += it.copy(lanes = n) }
+            group = ArrayList()
+            laneEnds = ArrayList()
+        }
+        for (e in timed) {
             val from = maxOf(e.start, windowStart)
             val to = minOf(e.end, windowEnd)
+            if (group.isNotEmpty() && from >= groupEnd) closeGroup()
             var lane = laneEnds.indexOfFirst { it <= from }
             if (lane < 0) {
                 lane = if (laneEnds.size < maxLanes) laneEnds.size.also { laneEnds += 0L } else laneEnds.indices.minBy { laneEnds[it] }
             }
             laneEnds[lane] = maxOf(laneEnds[lane], to)
-            DialSector(e, from, to, angleOf(from), ((to - from) / MINUTE) * 360f / span, lane)
+            groupEnd = if (group.isEmpty()) to else maxOf(groupEnd, to)
+            group += DialSector(e, from, to, angleOf(from), ((to - from) / MINUTE) * 360f / span, lane)
         }
+        closeGroup()
 
         val labels = when (mode) {
             // Часы впереди: следующий полный час и ещё 11 — подписаны часами суток (16, 17 … 1, 2).
@@ -104,7 +124,7 @@ object DialLayouts {
         } else null
 
         return DialLayout(
-            mode, windowStart, windowEnd, sectors, labels, laneEnds.size.coerceAtLeast(1),
+            mode, windowStart, windowEnd, sectors, labels, maxUsed,
             if (nowInside) angleOf(now) else null, untilNext, tomorrowAngle,
         )
     }

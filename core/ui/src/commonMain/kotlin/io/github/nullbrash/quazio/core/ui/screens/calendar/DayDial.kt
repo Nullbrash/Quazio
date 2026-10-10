@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
@@ -82,7 +83,7 @@ internal fun DayDial(
     }
     Canvas(modifier.aspectRatio(1f).then(gestures).semantics { contentDescription = description }) {
         val c = center
-        val radius = size.minDimension / 2f * 0.80f
+        val radius = size.minDimension / 2f * 0.85f
         drawCircle(face, radius, c)
 
         // Часовые линии.
@@ -92,25 +93,26 @@ internal fun DayDial(
             drawLine(ink.copy(alpha = 0.25f), point(c, radius * 0.30f, a), point(c, radius, a), strokeWidth = 1f)
         }
 
-        // Сектора событий: «дорожка» 0 — внешняя.
+        // Сектора событий: «дорожка» 0 — внешняя; дорожки — только у пересекающихся (s.lanes).
         val bandOuter = radius * 0.97f
         val bandInner = radius * 0.40f
-        val laneWidth = (bandOuter - bandInner) / layout.lanes
         for (s in layout.sectors) {
+            val laneWidth = (bandOuter - bandInner) / s.lanes
             val mid = bandOuter - laneWidth * (s.lane + 0.5f)
             val color = colorOf(s.event.color)
+            // Зазор между делами вплотную — иначе соседние сектора сливаются.
+            val gap = if (s.sweep > 3f) 0.6f else 0f
             drawArc(
                 color = color,
-                startAngle = s.startAngle - 90f,
-                sweepAngle = s.sweep.coerceAtLeast(1f),
+                startAngle = s.startAngle - 90f + gap,
+                sweepAngle = (s.sweep - 2 * gap).coerceAtLeast(1f),
                 useCenter = false,
                 topLeft = Offset(c.x - mid, c.y - mid),
                 size = Size(mid * 2, mid * 2),
-                style = Stroke(width = laneWidth * 0.92f, cap = StrokeCap.Butt),
+                style = Stroke(width = laneWidth * 0.94f, cap = StrokeCap.Butt),
             )
-            if (s.sweep >= 14f && s.event.title.isNotBlank()) {
-                val textAt = point(c, mid, angle(s.startAngle + s.sweep / 2))
-                drawCentered(measurer, s.event.title, textAt, TextStyle(color = Color.White, fontSize = 11.sp), maxWidth = (laneWidth * 1.6f).toInt().coerceAtLeast(40))
+            if (!compact && s.event.title.isNotBlank()) {
+                sectorTitle(measurer, s.event.title, c, mid, s.startAngle + s.sweep / 2, (s.sweep * PI / 180 * mid).toFloat(), laneWidth * 0.94f)
             }
         }
 
@@ -122,7 +124,8 @@ internal fun DayDial(
                 Offset(c.x - r, c.y - r), Size(r * 2, r * 2), style = Stroke(width = radius * 0.04f, cap = StrokeCap.Round),
             )
             // Подпись — у конца дуги (начала события), а не посередине: короткая дуга почти у стрелки.
-            untilNextText?.let { drawCentered(measurer, it, point(c, r * 1.25f, angle(u.fromAngle + u.sweep + 12f)), TextStyle(color = labelColor, fontSize = 11.sp)) }
+            // Внутри белой дуги: снаружи она наезжала на подписи секторов.
+            untilNextText?.let { drawCentered(measurer, it, point(c, r * 0.78f, angle(u.fromAngle + u.sweep + 12f)), TextStyle(color = labelColor, fontSize = 11.sp)) }
         }
 
         // Граница завтрашнего дня.
@@ -134,7 +137,7 @@ internal fun DayDial(
 
         // Подписи часов — снаружи круга.
         val labelStyle = TextStyle(color = labelColor, fontSize = if (compact) 8.sp else if (layout.labels.size > 12) 9.sp else 13.sp, fontWeight = FontWeight.Bold)
-        for (l in layout.labels) if (!compact || l.hour % 6 == 0) drawCentered(measurer, l.hour.toString(), point(c, radius * 1.13f, angle(l.angle)), labelStyle)
+        for (l in layout.labels) if (!compact || l.hour % 6 == 0) drawCentered(measurer, l.hour.toString(), point(c, radius * 1.10f, angle(l.angle)), labelStyle)
 
         // Стрелка «сейчас».
         layout.nowAngle?.let { a ->
@@ -145,6 +148,25 @@ internal fun DayDial(
         val small = if (compact) 9.sp else 13.sp
         drawCentered(measurer, centerTop, Offset(c.x, c.y - radius * (if (compact) 0.10f else 0.06f)), TextStyle(color = labelColor, fontSize = big, fontWeight = FontWeight.Bold))
         drawCentered(measurer, centerBottom, Offset(c.x, c.y + radius * (if (compact) 0.16f else 0.12f)), TextStyle(color = labelColor, fontSize = small))
+    }
+}
+
+/**
+ * Название в секторе: поперёк, если влезает; иначе — вдоль радиуса (в 24 часах час — узкий
+ * клин, поперёк влезали две буквы: нашлось в перегруженном дне). Слева — не вверх ногами.
+ */
+private fun DrawScope.sectorTitle(measurer: TextMeasurer, title: String, c: Offset, mid: Float, angleDeg: Float, arcLen: Float, thickness: Float) {
+    val base = 11.sp
+    val at = point(c, mid, angle(angleDeg))
+    val across = measurer.measure(title, TextStyle(fontSize = base), maxLines = 1)
+    if (across.size.width <= arcLen * 0.9f && across.size.height <= thickness * 0.65f) {
+        drawCentered(measurer, title, at, TextStyle(color = Color.White, fontSize = base))
+        return
+    }
+    val sizePx = minOf(base.toPx(), arcLen * 0.72f)
+    if (sizePx < base.toPx() * 0.6f) return // сектор — полоска: подпись не прочитать
+    withTransform({ rotate(if (angleDeg in 0f..180f) angleDeg - 90f else angleDeg + 90f, at) }) {
+        drawCentered(measurer, title, at, TextStyle(color = Color.White, fontSize = (sizePx / density / fontScale).sp), maxWidth = (thickness * 0.9f).toInt().coerceAtLeast(1))
     }
 }
 

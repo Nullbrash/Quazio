@@ -61,6 +61,8 @@ class DialLayoutTest {
         )
         assertEquals(listOf(0, 1, 0), l.sectors.map { it.lane })
         assertEquals(2, l.lanes)
+        // Пересекаются только a и b — у них по две дорожки; c (вплотную после a) — на всю полосу.
+        assertEquals(listOf(2, 2, 1), l.sectors.map { it.lanes })
         assertEquals(135f, l.sectors[0].startAngle) // 9:00 на суточном круге
         assertEquals(24, l.labels.size)
     }
@@ -71,5 +73,24 @@ class DialLayoutTest {
         val l = DialLayouts.layout(DialMode.DAY_24, emptyList(), day + 15 * h, tomorrow, tomorrow + 24 * h, minuteOfDay)
         assertNull(l.nowAngle)
         assertNull(l.untilNext)
+    }
+
+    @Test
+    fun overloadedDayKeepsSeparateEventsWide() {
+        // Дела вплотную по часу, три пересекаются в обед, потом с паузами — как перегруженный день пользователя.
+        val l = DialLayouts.layout(
+            DialMode.DAY_24,
+            listOf(
+                ev("7", day + 7 * h, day + 8 * h), ev("8", day + 8 * h, day + 9 * h), ev("9", day + 9 * h, day + 10 * h),
+                ev("обед", day + 12 * h, day + 13 * h), ev("вебинар", day + 12 * h + h / 2, day + 14 * h), ev("врач", day + 12 * h + 3 * h / 4, day + 13 * h + h / 2),
+                ev("зал", day + 15 * h, day + 16 * h),
+            ),
+            day + 6 * h, day, day + 24 * h, minuteOfDay,
+        )
+        val byTitle = l.sectors.associateBy { it.event.title }
+        assertEquals(listOf(0, 0, 0), listOf("7", "8", "9").map { byTitle.getValue(it).lane }) // вплотную — одна дорожка
+        assertEquals(listOf(1, 1, 1, 1), listOf("7", "8", "9", "зал").map { byTitle.getValue(it).lanes }) // и на всю ширину
+        assertEquals(3, byTitle.getValue("обед").lanes)
+        assertEquals(setOf(0, 1, 2), listOf("обед", "вебинар", "врач").map { byTitle.getValue(it).lane }.toSet())
     }
 }

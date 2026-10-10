@@ -34,7 +34,8 @@ internal object DialBitmap {
         val cv = Canvas(bmp)
         val cx = sizePx / 2f
         val cy = sizePx / 2f
-        val radius = sizePx / 2f * 0.80f
+        // Круг — как можно крупнее (пожелание пользователя): по краю остаётся место только цифрам часов.
+        val radius = sizePx / 2f * 0.85f
         val px = sizePx / 360f // единица размера: шрифты и линии растут с виджетом
 
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(circleOpacity * 255 / 100, 0, 0, 0) }
@@ -47,21 +48,20 @@ internal object DialBitmap {
             cv.drawLine(x(cx, radius * 0.30f, a), y(cy, radius * 0.30f, a), x(cx, radius, a), y(cy, radius, a), tick)
         }
 
-        // Сектора событий: «дорожка» 0 — внешняя.
+        // Сектора событий: «дорожка» 0 — внешняя; дорожки — только у пересекающихся (s.lanes).
         val bandOuter = radius * 0.97f
         val bandInner = radius * 0.40f
-        val laneWidth = (bandOuter - bandInner) / layout.lanes
         val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.BUTT }
-        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 11f * px * 1.25f }
+        val baseText = 12f * px * 1.25f
         for (s in layout.sectors) {
+            val laneWidth = (bandOuter - bandInner) / s.lanes
             val mid = bandOuter - laneWidth * (s.lane + 0.5f)
             arc.color = (s.event.color ?: 0xFF9E9E9E).toInt()
-            arc.strokeWidth = laneWidth * 0.92f
-            cv.drawArc(RectF(cx - mid, cy - mid, cx + mid, cy + mid), s.startAngle - 90f, s.sweep.coerceAtLeast(1f), false, arc)
-            if (s.sweep >= 14f && s.event.title.isNotBlank()) {
-                val a = rad(s.startAngle + s.sweep / 2)
-                text(cv, s.event.title, x(cx, mid, a), y(cy, mid, a), titlePaint, maxWidth = laneWidth * 1.6f)
-            }
+            arc.strokeWidth = laneWidth * 0.94f
+            // Зазор между делами вплотную — иначе соседние сектора сливаются.
+            val gap = if (s.sweep > 3f) 0.6f else 0f
+            cv.drawArc(RectF(cx - mid, cy - mid, cx + mid, cy + mid), s.startAngle - 90f + gap, (s.sweep - 2 * gap).coerceAtLeast(1f), false, arc)
+            if (s.event.title.isNotBlank()) sectorTitle(cv, s.event.title, cx, cy, mid, s.startAngle + s.sweep / 2, (s.sweep * PI / 180 * mid).toFloat(), laneWidth * 0.94f, baseText)
         }
 
         // «Осталось» до следующего события — белая дуга внутри, подпись у её конца.
@@ -70,8 +70,9 @@ internal object DialBitmap {
             val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.WHITE; strokeWidth = radius * 0.04f; strokeCap = Paint.Cap.ROUND }
             cv.drawArc(RectF(cx - r, cy - r, cx + r, cy + r), u.fromAngle - 90f, u.sweep.coerceAtLeast(1f), false, p)
             untilText?.let {
+                // Внутри белой дуги: снаружи она наезжала на подписи секторов.
                 val a = rad(u.fromAngle + u.sweep + 12f)
-                text(cv, it, x(cx, r * 1.25f, a), y(cy, r * 1.25f, a), TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 11f * px * 1.25f })
+                text(cv, it, x(cx, r * 0.78f, a), y(cy, r * 0.78f, a), TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 11f * px * 1.25f })
             }
         }
 
@@ -88,12 +89,12 @@ internal object DialBitmap {
 
         // Цифры часов — снаружи круга, белые прямо на обоях.
         val label = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE; typeface = Typeface.DEFAULT_BOLD; textSize = (if (hours == 24) 9f else 13f) * px * 1.25f
+            color = Color.WHITE; typeface = Typeface.DEFAULT_BOLD; textSize = (if (hours == 24) 10f else 13f) * px * 1.25f
             setShadowLayer(2f * px, 0f, 0f, Color.argb(160, 0, 0, 0)) // читается и на светлых обоях
         }
         for (l in layout.labels) {
             val a = rad(l.angle)
-            text(cv, l.hour.toString(), x(cx, radius * 1.13f, a), y(cy, radius * 1.13f, a), label)
+            text(cv, l.hour.toString(), x(cx, radius * 1.10f, a), y(cy, radius * 1.10f, a), label)
         }
 
         // Стрелка «сейчас».
@@ -106,6 +107,26 @@ internal object DialBitmap {
         text(cv, centerTop, cx, cy - radius * 0.06f, TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 22f * px * 1.25f; typeface = Typeface.DEFAULT_BOLD })
         text(cv, centerBottom, cx, cy + radius * 0.12f, TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 13f * px * 1.25f })
         return bmp
+    }
+
+    /**
+     * Название в секторе: поперёк, если влезает; иначе — вдоль радиуса (в 24 часах час — узкий
+     * клин, поперёк влезали две буквы: нашлось в перегруженном дне). Слева — не вверх ногами.
+     */
+    private fun sectorTitle(cv: Canvas, title: String, cx: Float, cy: Float, mid: Float, angle: Float, arcLen: Float, thickness: Float, base: Float) {
+        val p = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = base }
+        val a = rad(angle)
+        if (p.measureText(title) <= arcLen * 0.9f && p.textSize <= thickness * 0.55f) {
+            text(cv, title, x(cx, mid, a), y(cy, mid, a), p)
+            return
+        }
+        p.textSize = minOf(base, arcLen * 0.72f)
+        if (p.textSize < base * 0.6f) return // сектор — полоска (15 минут в 24 часах): подпись не прочитать
+        cv.save()
+        cv.translate(x(cx, mid, a), y(cy, mid, a))
+        cv.rotate(if (angle in 0f..180f) angle - 90f else angle + 90f)
+        text(cv, title, 0f, 0f, p, maxWidth = thickness * 0.9f)
+        cv.restore()
     }
 
     /** Угол циферблата (0 — сверху, по часовой) → радианы. */

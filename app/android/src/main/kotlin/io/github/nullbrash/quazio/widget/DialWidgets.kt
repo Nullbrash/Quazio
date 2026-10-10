@@ -133,7 +133,7 @@ internal object DialWidgets {
     private const val DAY_MS = 86_400_000L
     private const val DEFAULT_DP = 180
     private const val MIN_PX = 200
-    private const val MAX_PX = 900
+    private const val MAX_PX = 1200
     private const val REQUEST_BASE = 8100
     private const val NEW_EVENT_NO = 1
     private const val NEW_EVENT_YES = 2
