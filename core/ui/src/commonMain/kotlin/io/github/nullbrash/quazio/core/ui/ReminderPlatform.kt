@@ -27,6 +27,11 @@ interface ReminderPlatform {
     suspend fun pickSound(current: String?, alarm: Boolean): String? = null
 
     fun soundName(uri: String?, alarm: Boolean): String? = null
+
+    /** Система не даёт работать в фоне (у Samsung — «спящие» приложения): будильники откладываются. */
+    fun backgroundRestricted(): Boolean = false
+
+    fun openBackgroundSettings() {}
 }
 
 val LocalReminderPlatform = staticCompositionLocalOf<ReminderPlatform?> { null }

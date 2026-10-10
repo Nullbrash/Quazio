@@ -1,6 +1,7 @@
 package io.github.nullbrash.quazio.reminders
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -74,4 +75,12 @@ internal class AndroidReminderPlatform(private val activity: ComponentActivity) 
 
     override fun soundName(uri: String?, alarm: Boolean): String? =
         uri?.let { runCatching { RingtoneManager.getRingtone(activity, Uri.parse(it))?.getTitle(activity) }.getOrNull() }
+
+    override fun backgroundRestricted(): Boolean =
+        Build.VERSION.SDK_INT >= 28 && activity.getSystemService(ActivityManager::class.java).isBackgroundRestricted
+
+    // Прямого перехода на страницу батареи приложения в Android нет — открываем «О приложении».
+    override fun openBackgroundSettings() {
+        activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${activity.packageName}")))
+    }
 }

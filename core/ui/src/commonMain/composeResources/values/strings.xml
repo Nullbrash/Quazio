@@ -272,6 +272,8 @@
     <string name="rem_no_permission">Без разрешения на уведомления напоминания не придут. Его можно дать в настройках Android.</string>
     <string name="rem_full_screen_needed">Чтобы будильник открывался на весь экран, Android просит отдельное разрешение.</string>
     <string name="rem_full_screen_allow">Разрешить</string>
+    <string name="bg_restricted">Телефон ограничил Quazio в фоне: напоминания и виджет не сработают, пока приложение закрыто. В настройках приложения откройте раздел батареи и снимите ограничение.</string>
+    <string name="bg_restricted_open">Открыть настройки</string>
     <string name="rem_pay_today">Платёж сегодня: %1$s</string>
     <string name="rem_pay_tomorrow">Завтра платёж: %1$s</string>
     <string name="rem_pay_before">Через %1$d дн. платёж: %2$s</string>

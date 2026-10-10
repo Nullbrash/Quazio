@@ -128,6 +128,7 @@ internal fun RemindersSection(services: AppServices) {
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(Res.string.rem_title), style = MaterialTheme.typography.titleMedium)
+        BackgroundWarning()
         key(tick) {
             ReminderRow(stringResource(Res.string.rem_payments), stringResource(Res.string.rem_payments_hint), s.paymentsEnabled,
                 { on -> if (on) enable { s.paymentsEnabled = true } else changed { s.paymentsEnabled = false } }) {

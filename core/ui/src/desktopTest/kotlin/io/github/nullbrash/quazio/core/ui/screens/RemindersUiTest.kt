@@ -88,4 +88,26 @@ class RemindersUiTest {
         assertEquals("Громкий" to ReminderKind.ALARM, p.name to p.kind)
         assertEquals(30, p.rampSeconds) // будильник — с нарастанием по умолчанию
     }
+
+    @Test
+    fun backgroundRestrictionIsShownWithSettingsButton() = runComposeUiTest {
+        var opened = 0
+        val restricted = object : ReminderPlatform {
+            override val phone = true
+            override fun reschedule() {}
+            override fun backgroundRestricted() = true
+            override fun openBackgroundSettings() { opened++ }
+        }
+        setContent { CompositionLocalProvider(LocalReminderPlatform provides restricted) { MaterialTheme { RemindersSection(services) } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Открыть настройки")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Открыть настройки").performClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun noWarningWithoutRestriction() = runComposeUiTest {
+        setContent { CompositionLocalProvider(LocalReminderPlatform provides platform) { MaterialTheme { RemindersSection(services) } } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Утренняя сводка дня")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(onAllNodesWithText("Открыть настройки").fetchSemanticsNodes().isEmpty())
+    }
 }

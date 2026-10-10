@@ -49,6 +49,7 @@ internal fun WidgetSection(prefs: WidgetPrefs) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(Res.string.widget_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(Res.string.widget_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        BackgroundWarning()
         SwitchRow(stringResource(Res.string.widget_24), dial24) { dial24 = it; save { prefs.dial24 = it } }
         Text(stringResource(Res.string.widget_opacity, opacity.toInt()))
         // Ступенями по 10 %, сохраняется по отпусканию — не перерисовывать виджет на каждый пиксель.
