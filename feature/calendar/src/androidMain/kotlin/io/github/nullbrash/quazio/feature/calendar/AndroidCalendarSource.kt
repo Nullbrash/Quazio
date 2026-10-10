@@ -1,12 +1,15 @@
 package io.github.nullbrash.quazio.feature.calendar
 
 import android.Manifest
+import android.accounts.Account
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
+import android.os.Bundle
+import android.os.SystemClock
 import android.provider.CalendarContract
 import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
@@ -17,8 +20,9 @@ import android.provider.CalendarContract.Reminders
  * Календари телефона через системное хранилище (`CalendarContract`), как у Sectograph:
  * события Google сюда синхронизирует сам Google, Quazio их только читает и правит.
  * Повторения считает Android (таблица `Instances`).
+ * [syncWaitMs] — сколько ждать, пока сервер узнает о только что созданном событии (см. [awaitSynced]).
  */
-class AndroidCalendarSource(context: Context) : CalendarSource {
+class AndroidCalendarSource(context: Context, private val syncWaitMs: Long = 10_000) : CalendarSource {
 
     private val appContext = context.applicationContext
     private val cr: ContentResolver get() = appContext.contentResolver
@@ -113,7 +117,7 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
     }
 
     override fun updateInstance(eventId: String, instanceStart: Long, draft: EventDraft) {
-        if (!isSynced(eventId)) {
+        if (!awaitSynced(eventId)) {
             // Событие ещё не видел Google (или календарь «на телефоне»): исключения Android для
             // таких ломают всю серию — повторение убирается датой в EXDATE, правка — отдельным событием.
             addExdate(eventId, instanceStart)
@@ -143,7 +147,7 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
     }
 
     override fun deleteInstance(eventId: String, instanceStart: Long) {
-        if (!isSynced(eventId)) {
+        if (!awaitSynced(eventId)) {
             addExdate(eventId, instanceStart)
             return
         }
@@ -165,6 +169,34 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
         cr.query(ContentUris.withAppendedId(Events.CONTENT_URI, eventId.toLong()), arrayOf(Events._SYNC_ID), null, null, null).use { c ->
             c != null && c.moveToFirst() && !c.str(0).isNullOrEmpty()
         }
+
+    /**
+     * Серию, созданную только что, сервер (Google) ещё не видел — без его id правка одного
+     * повторения стала бы отдельным событием, не связанным с серией. Просим синхронизацию и
+     * ждём; не дождались (нет сети) или календарь «на телефоне» — false, запасной путь.
+     * Блокирует до [syncWaitMs] — только из фона.
+     */
+    private fun awaitSynced(eventId: String): Boolean {
+        if (isSynced(eventId)) return true
+        val account = cr.query(ContentUris.withAppendedId(Events.CONTENT_URI, eventId.toLong()), arrayOf(Events.ACCOUNT_NAME, Events.ACCOUNT_TYPE), null, null, null).use { c ->
+            if (c == null || !c.moveToFirst()) return false
+            val type = c.str(1).orEmpty()
+            if (type.isEmpty() || type.equals(CalendarContract.ACCOUNT_TYPE_LOCAL, ignoreCase = true)) return false
+            Account(c.str(0).orEmpty(), type)
+        }
+        runCatching {
+            ContentResolver.requestSync(account, CalendarContract.AUTHORITY, Bundle().apply {
+                putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true)
+                putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true)
+            })
+        }
+        val until = SystemClock.elapsedRealtime() + syncWaitMs
+        while (SystemClock.elapsedRealtime() < until) {
+            Thread.sleep(250)
+            if (isSynced(eventId)) return true
+        }
+        return false
+    }
 
     /** Убрать одно повторение из серии: дата добавляется в EXDATE (так делает и календарь AOSP). */
     private fun addExdate(eventId: String, instanceStart: Long) {

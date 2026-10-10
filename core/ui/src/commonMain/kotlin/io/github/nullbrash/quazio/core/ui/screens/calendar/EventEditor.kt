@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -91,6 +92,7 @@ import io.github.nullbrash.quazio.core.ui.res.cal_rem_week
 import io.github.nullbrash.quazio.core.ui.res.cal_save
 import io.github.nullbrash.quazio.core.ui.res.cal_scope_all
 import io.github.nullbrash.quazio.core.ui.res.cal_scope_one
+import io.github.nullbrash.quazio.core.ui.res.cal_saving
 import io.github.nullbrash.quazio.core.ui.res.cal_scope_title
 import io.github.nullbrash.quazio.core.ui.res.cal_time_zone
 import io.github.nullbrash.quazio.core.ui.res.cal_title_hint
@@ -109,6 +111,7 @@ import io.github.nullbrash.quazio.feature.calendar.EventDraft
 import io.github.nullbrash.quazio.feature.calendar.Repeat
 import io.github.nullbrash.quazio.feature.calendar.RepeatKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -183,6 +186,15 @@ internal fun EventEditor(
     var timeZoneId by remember { mutableStateOf(zone.id) }
     var error by remember { mutableStateOf<String?>(null) }
     var askScope by remember { mutableStateOf<(suspend (Boolean) -> Unit)?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    fun runScoped(action: suspend (Boolean) -> Unit, onlyThis: Boolean) {
+        askScope = null
+        scope.launch {
+            busy = true
+            runCatching { action(onlyThis) }.onFailure { error = it.message }
+            busy = false
+        }
+    }
     var confirmDelete by remember { mutableStateOf(false) }
     var pick by remember { mutableStateOf<String?>(null) }
 
@@ -383,14 +395,15 @@ internal fun EventEditor(
         }
     }
 
+    if (busy) SavingDialog()
     askScope?.let { action ->
         AlertDialog(
             onDismissRequest = { askScope = null },
             title = { Text(stringResource(Res.string.cal_scope_title)) },
             text = {
                 Column {
-                    TextButton(onClick = { askScope = null; scope.launch { runCatching { action(true) }.onFailure { error = it.message } } }) { Text(stringResource(Res.string.cal_scope_one)) }
-                    TextButton(onClick = { askScope = null; scope.launch { runCatching { action(false) }.onFailure { error = it.message } } }) { Text(stringResource(Res.string.cal_scope_all)) }
+                    TextButton(onClick = { runScoped(action, true) }) { Text(stringResource(Res.string.cal_scope_one)) }
+                    TextButton(onClick = { runScoped(action, false) }) { Text(stringResource(Res.string.cal_scope_all)) }
                 }
             },
             confirmButton = {},
@@ -465,6 +478,24 @@ internal fun EventEditor(
             )
         }
     }
+}
+
+/** «Сохраняю…» — если календарь отвечает не сразу (ждём, пока сервер узнает о новой серии). */
+@Composable
+private fun SavingDialog() {
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(400); show = true } // быстрые сохранения — без мелькания
+    if (!show) return
+    AlertDialog(
+        onDismissRequest = {},
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(24.dp))
+                Text(stringResource(Res.string.cal_saving), modifier = Modifier.padding(start = 16.dp))
+            }
+        },
+        confirmButton = {},
+    )
 }
 
 @Composable

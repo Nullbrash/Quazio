@@ -147,6 +147,78 @@ class AndroidCalendarSourceTest {
     @Test
     fun recurringEventNotYetSynced() = editOneAndCancelOne(synced = false)
 
+    /** Календарь с сервером (не «на телефоне»): аккаунт выдуманного типа, синхронизатора у него нет. */
+    private fun serverCalendar(): String {
+        val values = ContentValues().apply {
+            put(Calendars.ACCOUNT_NAME, ACCOUNT)
+            put(Calendars.ACCOUNT_TYPE, SERVER_TYPE)
+            put(Calendars.NAME, "quazio-test-server")
+            put(Calendars.CALENDAR_DISPLAY_NAME, "Тест Quazio (сервер)")
+            put(Calendars.CALENDAR_ACCESS_LEVEL, Calendars.CAL_ACCESS_OWNER)
+            put(Calendars.OWNER_ACCOUNT, ACCOUNT)
+            put(Calendars.VISIBLE, 1)
+            put(Calendars.SYNC_EVENTS, 1)
+        }
+        return ContentUris.parseId(context.contentResolver.insert(syncAdapterUri(Calendars.CONTENT_URI, SERVER_TYPE), values)!!).toString()
+    }
+
+    private fun syncAdapterUri(base: Uri, type: String): Uri = base.buildUpon()
+        .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+        .appendQueryParameter(Calendars.ACCOUNT_NAME, ACCOUNT)
+        .appendQueryParameter(Calendars.ACCOUNT_TYPE, type)
+        .build()
+
+    private fun originalIds(calendar: String): List<String?> =
+        context.contentResolver.query(CalendarContract.Events.CONTENT_URI, arrayOf("original_id"), "calendar_id = ? AND deleted = 0", arrayOf(calendar), null)!!
+            .use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+
+    @Test
+    fun freshSeriesOnServerCalendarWaitsForSyncId() {
+        val cal = serverCalendar()
+        try {
+            val waiting = AndroidCalendarSource(context, syncWaitMs = 5_000)
+            val id = waiting.create(EventDraft(cal, "Зарядка", day(1), day(1) + HOUR / 2, timeZone = "Europe/Moscow", rrule = "FREQ=DAILY;COUNT=3"))
+            // Сервер «отвечает» через полсекунды — правка одного повторения должна дождаться и стать исключением серии.
+            val server = Thread {
+                Thread.sleep(500)
+                context.contentResolver.update(syncAdapterUri(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id.toLong()), SERVER_TYPE),
+                    ContentValues().apply { put(CalendarContract.Events._SYNC_ID, "sync-$id") }, null, null)
+            }.apply { start() }
+            waiting.updateInstance(id, day(2), EventDraft(cal, "Зарядка (позже)", day(2) + HOUR, day(2) + HOUR * 3 / 2, timeZone = "Europe/Moscow"))
+            server.join()
+            assertEquals(listOf(null, id), originalIds(cal).sortedBy { it ?: "" }, "исключение ссылается на серию")
+            waiting.delete(id)
+            assertTrue(waiting.events(day(-1), day(10), setOf(cal)).none { it.title.startsWith("Зарядка") }, "удаление серии убирает и исключение")
+        } finally {
+            context.contentResolver.delete(syncAdapterUri(Calendars.CONTENT_URI, SERVER_TYPE), "${Calendars.ACCOUNT_NAME} = ?", arrayOf(ACCOUNT))
+        }
+    }
+
+    @Test
+    fun serverCalendarWithoutAnswerFallsBackAfterWaiting() {
+        val cal = serverCalendar()
+        try {
+            val waiting = AndroidCalendarSource(context, syncWaitMs = 600)
+            val id = waiting.create(EventDraft(cal, "Зарядка", day(1), day(1) + HOUR / 2, timeZone = "Europe/Moscow", rrule = "FREQ=DAILY;COUNT=3"))
+            val started = System.currentTimeMillis()
+            waiting.updateInstance(id, day(2), EventDraft(cal, "Зарядка (позже)", day(2) + HOUR, day(2) + HOUR * 3 / 2, timeZone = "Europe/Moscow"))
+            assertTrue(System.currentTimeMillis() - started >= 600, "сначала ждали ответа сервера")
+            assertEquals(listOf(null, null), originalIds(cal), "не дождались — запасной путь: отдельное событие")
+            assertEquals(listOf("Зарядка", "Зарядка (позже)", "Зарядка"), waiting.events(day(-1), day(10), setOf(cal)).map { it.title })
+        } finally {
+            context.contentResolver.delete(syncAdapterUri(Calendars.CONTENT_URI, SERVER_TYPE), "${Calendars.ACCOUNT_NAME} = ?", arrayOf(ACCOUNT))
+        }
+    }
+
+    @Test
+    fun phoneCalendarDoesNotWait() {
+        val waiting = AndroidCalendarSource(context, syncWaitMs = 5_000)
+        val id = waiting.create(EventDraft(calendarId, "Зарядка", day(1), day(1) + HOUR / 2, timeZone = "Europe/Moscow", rrule = "FREQ=DAILY;COUNT=3"))
+        val started = System.currentTimeMillis()
+        waiting.updateInstance(id, day(2), EventDraft(calendarId, "Зарядка (позже)", day(2) + HOUR, day(2) + HOUR * 3 / 2, timeZone = "Europe/Moscow"))
+        assertTrue(System.currentTimeMillis() - started < 2_000, "у календаря «на телефоне» сервера нет — ждать нечего")
+    }
+
     @Test
     fun recurringEventSyncedWithGoogle() = editOneAndCancelOne(synced = true)
 
@@ -175,6 +247,7 @@ class AndroidCalendarSourceTest {
 
     private companion object {
         const val ACCOUNT = "quazio-test@local"
+        const val SERVER_TYPE = "io.github.nullbrash.quazio.test"
         const val HOUR = 60L * 60 * 1000
         const val DAY = 24 * HOUR
         // 2026-11-02 10:00 МСК — будущее, чтобы не пересечься с прошлыми проверками.

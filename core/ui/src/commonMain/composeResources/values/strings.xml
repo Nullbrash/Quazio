@@ -167,6 +167,7 @@
     <string name="cal_time_zone">Часовой пояс: %1$s</string>
     <string name="cal_scope_title">Повторяющееся событие</string>
     <string name="cal_scope_one">Только это событие</string>
+    <string name="cal_saving">Сохраняю…</string>
     <string name="cal_scope_all">Все события серии</string>
     <string name="cal_delete_confirm">Удалить событие из календаря?</string>
     <string name="cal_choose">Выбрать</string>
