@@ -10,6 +10,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
+import android.graphics.Bitmap
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -24,6 +25,7 @@ import io.github.nullbrash.quazio.feature.calendar.AndroidCalendarSource
 import io.github.nullbrash.quazio.feature.calendar.CalendarEvent
 import io.github.nullbrash.quazio.feature.calendar.DialLayouts
 import io.github.nullbrash.quazio.feature.calendar.DialMode
+import io.github.nullbrash.quazio.feature.calendar.DialStyle
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDateTime
@@ -65,23 +67,45 @@ internal object DialWidgets {
         val date = "${local.day}.${local.month.ordinal + 1}"
         val until = layout.untilNext?.let { "${it.minutes / 60}:${(it.minutes % 60).toString().padStart(2, '0')}" }
         val tomorrow = runBlocking { WidgetLabels.tomorrow() }
+        val look = prefs.style
+        val hm: (Long) -> String = { t -> Instant.fromEpochMilliseconds(t).toLocalDateTime(zone).let { "${it.hour.toString().padStart(2, '0')}:${it.minute.toString().padStart(2, '0')}" } }
         val density = context.resources.displayMetrics.density
         for (id in ids) {
             val side = sideDp(mgr.getAppWidgetOptions(id))
             val px = (side * density).toInt().coerceIn(MIN_PX, MAX_PX)
-            val views = RemoteViews(context.packageName, R.layout.widget_dial)
-            views.setImageViewBitmap(R.id.widget_dial, DialBitmap.render(layout, px, prefs.style, center, date, until, tomorrow,
-                distinguish = services.calendarPrefs?.distinguishNeighbours ?: true))
+            val dial = DialBitmap.render(layout, px, look, center, date, until, tomorrow,
+                distinguish = services.calendarPrefs?.distinguishNeighbours ?: true, hm = hm)
+            val views = views(context.packageName, dial, look, prefs.showButtons)
             views.setOnClickPendingIntent(R.id.widget_dial, open(context, NEW_EVENT_NO))
-            val buttons = if (prefs.showButtons) View.VISIBLE else View.GONE
-            views.setViewVisibility(R.id.widget_calendar, buttons)
-            views.setViewVisibility(R.id.widget_add, buttons)
             views.setOnClickPendingIntent(R.id.widget_calendar, open(context, NEW_EVENT_NO))
             views.setOnClickPendingIntent(R.id.widget_add, open(context, NEW_EVENT_YES))
             mgr.updateAppWidget(id, views)
         }
         scheduleTick(context, (now / MINUTE_MS + 1) * MINUTE_MS)
         CalendarChangeJob.schedule(context)
+    }
+
+    /** Вид виджета без нажатий: круг, кнопки, их цвет и прозрачность. */
+    fun views(packageName: String, dial: Bitmap, look: DialStyle, showButtons: Boolean): RemoteViews {
+        val views = RemoteViews(packageName, R.layout.widget_dial)
+        views.setImageViewBitmap(R.id.widget_dial, dial)
+        val buttons = if (showButtons) View.VISIBLE else View.GONE
+        views.setViewVisibility(R.id.widget_calendar, buttons)
+        views.setViewVisibility(R.id.widget_add, buttons)
+        styleButtons(views, look)
+        return views
+    }
+
+    /** Цвет фона кнопок и общая прозрачность: картинка фона перекрашивается, значки — только прозрачность. */
+    private fun styleButtons(views: RemoteViews, look: DialStyle) {
+        val opacity = look.opacity.coerceIn(0, 100)
+        val bgAlpha = (((look.buttons ushr 24) and 0xFF).toInt() * opacity) / 100
+        val iconAlpha = 255 * opacity / 100
+        for ((bg, icon) in listOf(R.id.widget_calendar_bg to R.id.widget_calendar_icon, R.id.widget_add_bg to R.id.widget_add_icon)) {
+            views.setInt(bg, "setColorFilter", (look.buttons or 0xFF000000).toInt())
+            views.setInt(bg, "setImageAlpha", bgAlpha)
+            views.setInt(icon, "setImageAlpha", iconAlpha)
+        }
     }
 
     /** События показываемых календарей; календарь не включён или нет доступа — пустой круг (с часами). */

@@ -15,8 +15,9 @@ data class DialStyle(
     val hand: Long = 0xFFE53935,
     val timeBoundary: Long = CLEAR,
     // Секторы
-    /** Цвет сектора у события без своего цвета. */
+    /** Цвет сектора у события без своего цвета, а при [allSectorsBase] — у всех. */
     val sectorBase: Long = 0xFF9E9E9E,
+    val allSectorsBase: Boolean = false,
     val sectorTimeBackground: Long = CLEAR,
     val eventText: Long = WHITE,
     val sectorTime: Long = CLEAR,
@@ -42,7 +43,8 @@ data class DialStyle(
 ) {
 
     /** «ключ=AARRGGBB;…»: незнакомые ключи пропускаются, недостающие — по умолчанию (новые версии). */
-    fun encode(): String = (COLORS.map { "${it.key}=${hex(it.get(this))}" } + "opacity=$opacity").joinToString(";")
+    fun encode(): String =
+        (COLORS.map { "${it.key}=${hex(it.get(this))}" } + "all_base=${if (allSectorsBase) 1 else 0}" + "opacity=$opacity").joinToString(";")
 
     /** Одно поле цвета — для хранения и экрана настройки. */
     class ColorField(val key: String, val get: (DialStyle) -> Long, val set: (DialStyle, Long) -> DialStyle)
@@ -81,6 +83,7 @@ data class DialStyle(
                 val key = part.substringBefore('=', "")
                 val value = part.substringAfter('=', "")
                 if (key == "opacity") value.toIntOrNull()?.let { style = style.copy(opacity = it.coerceIn(0, 100)) }
+                else if (key == "all_base") style = style.copy(allSectorsBase = value == "1")
                 else COLORS.firstOrNull { it.key == key }?.let { f -> value.toLongOrNull(16)?.let { style = f.set(style, it and 0xFFFFFFFFL) } }
             }
             return style

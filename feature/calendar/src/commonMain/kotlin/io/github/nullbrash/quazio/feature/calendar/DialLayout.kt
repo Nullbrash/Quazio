@@ -40,6 +40,11 @@ data class DialLayout(
     val untilNext: UntilNext?,
     /** Где начинается завтра (12-часовой режим, окно через полночь) — угол полуночи. */
     val tomorrowAngle: Float?,
+    /**
+     * Где кончается показанное время (линия границы): у 12 «скользящих» — «сейчас + 12 ч», то
+     * есть под стрелкой; у 24 часов — полночь.
+     */
+    val boundaryAngle: Float = 0f,
 )
 
 data class UntilNext(val fromAngle: Float, val sweep: Float, val minutes: Long, val event: CalendarEvent)
@@ -126,6 +131,7 @@ object DialLayouts {
         return DialLayout(
             mode, windowStart, windowEnd, sectors, labels, maxUsed,
             if (nowInside) angleOf(now) else null, untilNext, tomorrowAngle,
+            boundaryAngle = angleOf(windowEnd),
         )
     }
 }

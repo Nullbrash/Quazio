@@ -7,9 +7,12 @@ package io.github.nullbrash.quazio.feature.calendar
  */
 object DialColors {
 
-    /** Цвет каждого сектора (по порядку [sectors]); [distinguish] — настройка «различать соседние». */
-    fun of(sectors: List<DialSector>, distinguish: Boolean, fallback: Long = 0xFF9E9E9E): List<Long> {
-        val base = sectors.map { it.event.color ?: fallback }
+    /**
+     * Цвет каждого сектора (по порядку [sectors]); [distinguish] — настройка «различать соседние»;
+     * [fallback] — у события без цвета; [allFallback] — все сектора цветом [fallback].
+     */
+    fun of(sectors: List<DialSector>, distinguish: Boolean, fallback: Long = 0xFF9E9E9E, allFallback: Boolean = false): List<Long> {
+        val base = sectors.map { if (allFallback) fallback else it.event.color ?: fallback }
         if (!distinguish) return base
         val result = base.toMutableList()
         val order = sectors.indices.sortedWith(compareBy({ sectors[it].from }, { sectors[it].lane }))

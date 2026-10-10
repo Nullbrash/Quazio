@@ -29,6 +29,8 @@ class DialLayoutTest {
         assertEquals(0f, l.tomorrowAngle)
         assertEquals(listOf(16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3), l.labels.map { it.hour })
         assertEquals(120f, l.labels.first().angle) // 16 → 4 часа
+        assertEquals(l.nowAngle, l.boundaryAngle) // конец окна «сейчас + 12 ч» — под стрелкой
+        assertEquals(0f, DialLayouts.layout(DialMode.DAY_24, listOf(e), now, day, day + 24 * h, minuteOfDay).boundaryAngle) // полночь
     }
 
     @Test

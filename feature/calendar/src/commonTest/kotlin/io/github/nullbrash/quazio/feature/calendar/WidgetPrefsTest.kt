@@ -45,7 +45,7 @@ class WidgetPrefsTest {
     fun styleIsSavedAndReadBack() {
         val store = MemoryStore()
         val p = WidgetPrefs(store)
-        val custom = DialStyle(outerRing = 0x80FF0000, hand = 0xFF00FF00, buttons = 0xFF000000, opacity = 60)
+        val custom = DialStyle(outerRing = 0x80FF0000, hand = 0xFF00FF00, buttons = 0xFF000000, opacity = 60, allSectorsBase = true)
         p.style = custom
         assertEquals(custom, WidgetPrefs(store).style)
         // Незнакомые ключи (из будущих версий) и мусор не ломают чтение.

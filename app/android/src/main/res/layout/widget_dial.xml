@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Виджет-циферблат: круг картинкой (дуги RemoteViews не рисует) и кнопки «календарь» и «+». -->
+<!-- Виджет-циферблат: круг картинкой (дуги RemoteViews не рисует) и кнопки «календарь» и «+».
+     Фон кнопки — отдельная картинка: её цвет и прозрачность меняются на любой версии Android. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -11,23 +12,49 @@
         android:contentDescription="@string/widget_label"
         android:scaleType="fitCenter" />
 
-    <ImageView
+    <FrameLayout
         android:id="@+id/widget_calendar"
         android:layout_width="36dp"
         android:layout_height="36dp"
         android:layout_gravity="bottom|start"
-        android:background="@drawable/widget_button_bg"
-        android:contentDescription="@string/widget_open_calendar"
-        android:padding="7dp"
-        android:src="@drawable/ic_widget_calendar" />
+        android:contentDescription="@string/widget_open_calendar">
 
-    <ImageView
+        <ImageView
+            android:id="@+id/widget_calendar_bg"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:src="@drawable/widget_button_bg" />
+
+        <ImageView
+            android:id="@+id/widget_calendar_icon"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:padding="7dp"
+            android:src="@drawable/ic_widget_calendar" />
+    </FrameLayout>
+
+    <FrameLayout
         android:id="@+id/widget_add"
         android:layout_width="36dp"
         android:layout_height="36dp"
         android:layout_gravity="bottom|end"
-        android:background="@drawable/widget_button_bg"
-        android:contentDescription="@string/widget_new_event"
-        android:padding="7dp"
-        android:src="@drawable/ic_widget_add" />
+        android:contentDescription="@string/widget_new_event">
+
+        <ImageView
+            android:id="@+id/widget_add_bg"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:src="@drawable/widget_button_bg" />
+
+        <ImageView
+            android:id="@+id/widget_add_icon"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:padding="7dp"
+            android:src="@drawable/ic_widget_add" />
+    </FrameLayout>
 </FrameLayout>

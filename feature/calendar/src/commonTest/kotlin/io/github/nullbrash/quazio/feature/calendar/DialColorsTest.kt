@@ -34,6 +34,18 @@ class DialColorsTest {
     }
 
     @Test
+    fun baseColourForEventsWithoutColourOrForAll() {
+        val purple = 0xFF8E24AA
+        val l = layout(ev("a", day + 9 * h, day + 10 * h), ev("b", day + 11 * h, day + 12 * h, color = null))
+        assertEquals(listOf(blue, purple), DialColors.of(l.sectors, distinguish = true, fallback = purple))
+        assertEquals(listOf(purple, purple), DialColors.of(l.sectors, distinguish = true, fallback = purple, allFallback = true))
+        // Вплотную и все базовым — второй всё равно другим оттенком.
+        val touching = layout(ev("a", day + 9 * h, day + 10 * h), ev("b", day + 10 * h, day + 11 * h))
+        val c = DialColors.of(touching.sectors, distinguish = true, fallback = purple, allFallback = true)
+        assertEquals(purple, c[0]); kotlin.test.assertNotEquals(purple, c[1])
+    }
+
+    @Test
     fun overlappingSameColourAllDiffer() {
         val l = layout(ev("a", day + 12 * h, day + 13 * h), ev("b", day + 12 * h + h / 2, day + 14 * h), ev("c", day + 12 * h + 3 * h / 4, day + 13 * h + h / 2))
         assertEquals(3, DialColors.of(l.sectors, distinguish = true).toSet().size)
