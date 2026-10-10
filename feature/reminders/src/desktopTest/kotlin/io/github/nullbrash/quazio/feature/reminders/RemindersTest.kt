@@ -75,6 +75,7 @@ class RemindersTest {
         assertEquals(10, settings.eventEndMinutes)
         assertEquals(false, settings.persistentEnabled)
         assertTrue(settings.desktopEnabled)
+        assertTrue(settings.paymentsShowAmount)
         val profiles = reminders.profiles.all()
         assertEquals(listOf("notification" to ReminderKind.NOTIFICATION, "alarm" to ReminderKind.ALARM), profiles.map { it.id to it.kind })
     }
@@ -84,7 +85,7 @@ class RemindersTest {
         val id = internet()
         val list = reminders.upcoming(at("2026-10-13T00:00"), at("2026-10-16T00:00")).filterIsInstance<Reminder.Payment>()
         assertEquals(listOf(at("2026-10-14T10:00") to 1, at("2026-10-15T10:00") to 0), list.map { it.at to it.daysBefore })
-        assertTrue(list.all { it.ask && it.name == "Интернет" })
+        assertTrue(list.all { it.ask && it.name == "Интернет" && it.amountMinor == 70_000L })
 
         finance.recurring.record(accountId, id, LocalDate.parse("2026-10-15"),
             finance.recurring.defaultTxn(finance.recurring.byId(id)!!, LocalDate.parse("2026-10-15"), moscow.id))
@@ -111,7 +112,8 @@ class RemindersTest {
         assertEquals(1, again.size)
         reminders.markShown(again, now + 10 * 60_000)
         // Показанное отложенное ещё находится по ключу — для кнопок уведомления (нашлось на эмуляторе).
-        assertEquals("Интернет", (reminders.find(again.single().key, now + 10 * 60_000) as Reminder.Payment).name)
+        val found = reminders.find(again.single().key, now + 10 * 60_000) as Reminder.Payment
+        assertEquals("Интернет" to 70_000L, found.name to found.amountMinor) // сумма переживает «Отложить»
         assertTrue(reminders.due(now + 11 * 60_000).isEmpty())
         assertEquals(at("2026-11-15T10:00"), reminders.nextAt(now + 11 * 60_000)) // следующий месяц
         settings.paymentsEnabled = false

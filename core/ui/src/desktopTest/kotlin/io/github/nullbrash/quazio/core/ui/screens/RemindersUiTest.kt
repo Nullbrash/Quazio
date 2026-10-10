@@ -27,6 +27,9 @@ import io.github.nullbrash.quazio.feature.reminders.ProfileStore
 import io.github.nullbrash.quazio.feature.reminders.ReminderKind
 import io.github.nullbrash.quazio.feature.reminders.ReminderService
 import io.github.nullbrash.quazio.feature.reminders.ReminderSettings
+import io.github.nullbrash.quazio.core.ui.reminderText
+import io.github.nullbrash.quazio.feature.reminders.Reminder
+import kotlinx.datetime.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -67,8 +70,8 @@ class RemindersUiTest {
         assertTrue(onAllNodesWithText("08:00").fetchSemanticsNodes().isEmpty())
         onNodeWithText("Уведомления Windows").assertExists() // на ПК — вместо постоянного уведомления
 
-        // Переключатель сводки — второй (после платежей).
-        onAllNodes(isToggleable())[1].performClick()
+        // Переключатель сводки — третий (после платежей и «показывать сумму»).
+        onAllNodes(isToggleable())[2].performClick()
         waitUntil(timeoutMillis = 10_000) { reminders.settings.summaryEnabled }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("08:00")).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(reschedules > 0)
@@ -109,5 +112,13 @@ class RemindersUiTest {
         setContent { CompositionLocalProvider(LocalReminderPlatform provides platform) { MaterialTheme { RemindersSection(services) } } }
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Утренняя сводка дня")).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(onAllNodesWithText("Открыть настройки").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun paymentTextShowsAmountUnlessHidden() = kotlinx.coroutines.runBlocking {
+        val r = Reminder.Payment("k", 0, "notification", "rec", LocalDate.parse("2026-10-15"), "Интернет", true, 1, 70_000)
+        assertEquals("Завтра платёж: Интернет, 700 ₽", reminderText(r, reminders).first)
+        reminders.settings.paymentsShowAmount = false
+        assertEquals("Завтра платёж: Интернет", reminderText(r, reminders).first)
     }
 }

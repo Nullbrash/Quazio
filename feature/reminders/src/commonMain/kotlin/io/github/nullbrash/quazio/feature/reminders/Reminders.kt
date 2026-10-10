@@ -29,6 +29,7 @@ sealed interface Reminder {
     data class Payment(
         override val key: String, override val at: Long, override val profileId: String,
         val recurringId: String, val date: LocalDate, val name: String, val ask: Boolean, val daysBefore: Int,
+        val amountMinor: Long = 0,
     ) : Reminder
 
     /** Утренняя сводка дня; содержимое собирается в момент показа ([ReminderService.summary]). */
@@ -83,7 +84,7 @@ class ReminderService(
                     days.forEach { before ->
                         val at = millis(o.date.minus(DatePeriod(days = before)), time, z)
                         out += Reminder.Payment("pay|${r.id}|${o.date}|$before", at, s.paymentsProfile, r.id, o.date, r.name,
-                            ask = r.mode == RecurringMode.ASK, daysBefore = before)
+                            ask = r.mode == RecurringMode.ASK, daysBefore = before, amountMinor = r.amountMinor)
                     }
                 }
         }
@@ -206,7 +207,7 @@ class ReminderService(
     private fun snoozeKey(key: String, at: Long) = key.substringBefore("#") + "#" + at
 
     private fun encode(r: Reminder): String = when (r) {
-        is Reminder.Payment -> listOf("P", r.key, r.at, r.profileId, r.recurringId, r.date, clean(r.name), r.ask, r.daysBefore)
+        is Reminder.Payment -> listOf("P", r.key, r.at, r.profileId, r.recurringId, r.date, clean(r.name), r.ask, r.daysBefore, r.amountMinor)
         is Reminder.Summary -> listOf("S", r.key, r.at, r.profileId, r.date)
         is Reminder.EventEnd -> listOf("E", r.key, r.at, r.profileId, clean(r.title), r.end, r.minutes)
     }.joinToString("\t")
@@ -214,7 +215,8 @@ class ReminderService(
     private fun decode(line: String): Reminder? = runCatching {
         val f = line.split('\t')
         when (f[0]) {
-            "P" -> Reminder.Payment(f[1], f[2].toLong(), f[3], f[4], LocalDate.parse(f[5]), f[6], f[7].toBoolean(), f[8].toInt())
+            // Суммы в записи нет у отложенных до её появления — тогда без суммы.
+            "P" -> Reminder.Payment(f[1], f[2].toLong(), f[3], f[4], LocalDate.parse(f[5]), f[6], f[7].toBoolean(), f[8].toInt(), f.getOrNull(9)?.toLongOrNull() ?: 0)
             "S" -> Reminder.Summary(f[1], f[2].toLong(), f[3], LocalDate.parse(f[4]))
             "E" -> Reminder.EventEnd(f[1], f[2].toLong(), f[3], f[4], f[5].toLong(), f[6].toInt())
             else -> null

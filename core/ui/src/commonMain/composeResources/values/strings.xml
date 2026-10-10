@@ -274,6 +274,8 @@
     <string name="rem_full_screen_allow">Разрешить</string>
     <string name="bg_restricted">Телефон ограничил Quazio в фоне: напоминания и виджет не сработают, пока приложение закрыто. В настройках приложения откройте раздел батареи и снимите ограничение.</string>
     <string name="bg_restricted_open">Открыть настройки</string>
+    <string name="rem_amount">Показывать сумму платежа</string>
+    <string name="rem_amount_hint">В уведомлениях о платежах и в утренней сводке. Уведомление видно и на заблокированном экране.</string>
     <string name="rem_pay_today">Платёж сегодня: %1$s</string>
     <string name="rem_pay_tomorrow">Завтра платёж: %1$s</string>
     <string name="rem_pay_before">Через %1$d дн. платёж: %2$s</string>

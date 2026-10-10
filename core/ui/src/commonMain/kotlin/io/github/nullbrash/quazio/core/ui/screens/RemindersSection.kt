@@ -42,6 +42,8 @@ import io.github.nullbrash.quazio.core.ui.LocalReminderPlatform
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.action_delete
+import io.github.nullbrash.quazio.core.ui.res.rem_amount
+import io.github.nullbrash.quazio.core.ui.res.rem_amount_hint
 import io.github.nullbrash.quazio.core.ui.res.cal_done
 import io.github.nullbrash.quazio.core.ui.res.rem_calendars
 import io.github.nullbrash.quazio.core.ui.res.rem_desktop
@@ -135,6 +137,8 @@ internal fun RemindersSection(services: AppServices) {
                 TimeButton(s.paymentsTime) { pickTime = "payments" }
                 ProfilePicker(profiles, profileName(s.paymentsProfile)) { id -> changed { s.paymentsProfile = id } }
             }
+            ReminderRow(stringResource(Res.string.rem_amount), stringResource(Res.string.rem_amount_hint), s.paymentsShowAmount,
+                { on -> changed { s.paymentsShowAmount = on } }) {}
             ReminderRow(stringResource(Res.string.rem_summary), stringResource(Res.string.rem_summary_hint), s.summaryEnabled,
                 { on -> if (on) enable { s.summaryEnabled = true } else changed { s.summaryEnabled = false } }) {
                 TimeButton(s.summaryTime) { pickTime = "summary" }

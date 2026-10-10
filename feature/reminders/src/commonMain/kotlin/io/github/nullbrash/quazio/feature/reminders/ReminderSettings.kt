@@ -8,13 +8,15 @@ import kotlinx.datetime.LocalTime
  * Какие напоминания включены и с каким профилем — настройки этого устройства. Значения по
  * умолчанию — решения пользователя (фаза 5): платежи — включены, 10:00; утренняя сводка —
  * выключена, 8:00; «до конца события» — выключено, 10 минут; постоянное уведомление —
- * выключено; уведомления на ПК — включены.
+ * выключено; уведомления на ПК — включены; сумма в уведомлениях о платежах — показывается
+ * (можно скрыть: уведомление видно на заблокированном экране).
  */
 class ReminderSettings(private val store: KeyValueStore) {
 
     var paymentsEnabled by flag("reminders.payments.enabled", true)
     var paymentsTime by time("reminders.payments.time", LocalTime(10, 0))
     var paymentsProfile by text("reminders.payments.profile", ProfileStore.NOTIFICATION)
+    var paymentsShowAmount by flag("reminders.payments.amount", true)
 
     var summaryEnabled by flag("reminders.summary.enabled", false)
     var summaryTime by time("reminders.summary.time", LocalTime(8, 0))

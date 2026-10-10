@@ -27,6 +27,8 @@ import io.github.nullbrash.quazio.core.ui.res.rem_sum_payments
 import io.github.nullbrash.quazio.core.ui.res.rem_sum_pending
 import io.github.nullbrash.quazio.core.ui.res.rem_sum_title
 import io.github.nullbrash.quazio.core.ui.screens.finance.shortDate
+import io.github.nullbrash.quazio.core.model.Money
+import io.github.nullbrash.quazio.feature.finance.formatMoney
 import io.github.nullbrash.quazio.feature.reminders.NowNext
 import io.github.nullbrash.quazio.feature.reminders.Reminder
 import io.github.nullbrash.quazio.feature.reminders.ReminderService
@@ -36,16 +38,17 @@ import org.jetbrains.compose.resources.getString
 import kotlin.time.Instant
 
 /**
- * Заголовок и текст уведомления — общие для телефона и ПК. Без сумм: уведомление видно,
- * не входя в Quazio, а суммы — под замком финансов (как в календаре — решение пользователя).
+ * Заголовок и текст уведомления — общие для телефона и ПК. Сумма платежа — по настройке
+ * (уведомление видно, не входя в Quazio, в том числе на заблокированном экране).
  */
 suspend fun reminderText(r: Reminder, reminders: ReminderService): Pair<String, String> = when (r) {
     is Reminder.Payment -> {
+        val name = withAmount(r.name, r.amountMinor, reminders.settings.paymentsShowAmount)
         val title = when {
-            r.daysBefore == 1 -> getString(Res.string.rem_pay_tomorrow, r.name)
-            r.daysBefore > 1 -> getString(Res.string.rem_pay_before, r.daysBefore, r.name)
-            !r.ask -> getString(Res.string.rem_pay_auto, r.name)
-            else -> getString(Res.string.rem_pay_today, r.name)
+            r.daysBefore == 1 -> getString(Res.string.rem_pay_tomorrow, name)
+            r.daysBefore > 1 -> getString(Res.string.rem_pay_before, r.daysBefore, name)
+            !r.ask -> getString(Res.string.rem_pay_auto, name)
+            else -> getString(Res.string.rem_pay_today, name)
         }
         val body = if (r.daysBefore > 0) getString(Res.string.rem_pay_body_before, shortDate(r.date))
         else if (r.ask) getString(Res.string.rem_pay_body_ask) else ""
@@ -58,7 +61,10 @@ suspend fun reminderText(r: Reminder, reminders: ReminderService): Pair<String, 
             if (day.events.isNotEmpty()) add(getString(Res.string.rem_sum_events, day.events.take(5).joinToString(", ") { e ->
                 if (e.allDay) e.title else hm(e.start, z) + " " + e.title
             }))
-            if (day.payments.isNotEmpty()) add(getString(Res.string.rem_sum_payments, day.payments.joinToString(", ") { it.recurring.name }))
+            val amounts = reminders.settings.paymentsShowAmount
+            if (day.payments.isNotEmpty()) add(getString(Res.string.rem_sum_payments, day.payments.joinToString(", ") {
+                withAmount(it.recurring.name, it.recurring.amountMinor, amounts)
+            }))
             if (day.pendingCount > 0) add(getString(Res.string.rem_sum_pending, day.pendingCount))
         }
         getString(Res.string.rem_sum_title) to (parts.joinToString("\n").ifEmpty { getString(Res.string.rem_sum_empty) })
@@ -74,6 +80,9 @@ suspend fun nowNextText(nn: NowNext): Pair<String, String> {
     val body = nn.next?.let { getString(Res.string.rem_now_next, it.title, hm(it.start, z)) } ?: getString(Res.string.rem_now_no_next)
     return title to body
 }
+
+private fun withAmount(name: String, minor: Long, show: Boolean) =
+    if (show && minor != 0L) "$name, ${formatMoney(Money.rub(minor))}" else name
 
 private fun hm(millis: Long, z: TimeZone): String = Instant.fromEpochMilliseconds(millis).toLocalDateTime(z).let {
     "${it.hour.toString().padStart(2, '0')}:${it.minute.toString().padStart(2, '0')}"
