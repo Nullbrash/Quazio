@@ -3,6 +3,7 @@ package io.github.nullbrash.quazio.core.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -22,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -142,8 +144,9 @@ internal fun RecoveryCodeDialog(code: String, onDone: () -> Unit) {
                 TextButton(onClick = { clipboard.setText(AnnotatedString(code)); copied = true }) {
                     Text(stringResource(if (copied) Res.string.lock_copied else Res.string.lock_copy))
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = saved, onCheckedChange = { saved = it })
+                // Нажимается вся строка, а не только квадратик: по подписи попадают чаще.
+                Row(Modifier.toggleable(saved, role = Role.Checkbox) { saved = it }, verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = saved, onCheckedChange = null)
                     Text(stringResource(Res.string.lock_code_saved))
                 }
             }
