@@ -141,6 +141,7 @@ internal fun LinkedCalendarsSection(links: LinkedCalendars, prefs: CalendarPrefs
                 Text(stringResource(Res.string.cal_week_sunday), modifier = Modifier.weight(1f))
                 Switch(sunday, { sunday = it; prefs.weekStartsSunday = it })
             }
+            DistinguishRow(prefs)
             // Выключено — ни одного обращения к сети (ссылки и прошлая загрузка остаются).
             TextButton(onClick = { prefs.enabled = false; enabled = false; changed() }) { Text(stringResource(Res.string.cal_turn_off)) }
         } else if (list.isNotEmpty()) {

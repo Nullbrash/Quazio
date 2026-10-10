@@ -23,7 +23,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.sp
 import io.github.nullbrash.quazio.core.ui.screens.finance.colorOf
+import io.github.nullbrash.quazio.feature.calendar.DialColors
 import io.github.nullbrash.quazio.feature.calendar.DialLayout
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -52,7 +54,10 @@ internal fun DayDial(
     onDrag: ((Float) -> Unit)? = null,
     /** Нажатие на центр круга — вернуться к «сейчас». */
     onCenterTap: (() -> Unit)? = null,
+    /** Соседние дела одного цвета — чуть другим оттенком (настройка календаря). */
+    distinguish: Boolean = true,
 ) {
+    val sectorColors = remember(layout, distinguish) { DialColors.of(layout.sectors, distinguish) }
     val measurer = rememberTextMeasurer()
     val face = MaterialTheme.colorScheme.surfaceVariant
     val ink = MaterialTheme.colorScheme.onSurfaceVariant
@@ -96,10 +101,10 @@ internal fun DayDial(
         // Сектора событий: «дорожка» 0 — внешняя; дорожки — только у пересекающихся (s.lanes).
         val bandOuter = radius * 0.97f
         val bandInner = radius * 0.40f
-        for (s in layout.sectors) {
+        for ((i, s) in layout.sectors.withIndex()) {
             val laneWidth = (bandOuter - bandInner) / s.lanes
             val mid = bandOuter - laneWidth * (s.lane + 0.5f)
-            val color = colorOf(s.event.color)
+            val color = colorOf(sectorColors[i])
             // Зазор между делами вплотную — иначе соседние сектора сливаются.
             val gap = if (s.sweep > 3f) 0.6f else 0f
             drawArc(

@@ -61,11 +61,10 @@ data class EventDraft(
     val rrule: String? = null,
     /** За сколько минут напоминать (у Google — уведомлением). */
     val reminderMinutes: List<Int> = emptyList(),
-    /**
-     * Ключ цвета события из палитры аккаунта (так его хранит Google); null — цвет календаря.
-     * Quazio цвет не выбирает, но при правке передаёт назад как был — чтобы не стереть.
-     */
+    /** Ключ цвета из палитры аккаунта (так его хранит Google; [CalendarSource.eventColors]). */
     val colorKey: String? = null,
+    /** Цвет без ключа — у календарей без своей палитры («на телефоне»); null вместе с ключом — цвет календаря. */
+    val color: Long? = null,
 ) {
     init {
         require(end >= start) { "Конец события раньше начала" }
@@ -101,4 +100,9 @@ interface CalendarSource {
     /** Событие целиком для окна правки: у повторяющегося — начало и длительность всей серии. */
     fun event(eventId: String): EventDraft?
 
+    /** Цвета для событий этого календаря (у Google — его 11, с ключами); пусто — выбрать нельзя. */
+    fun eventColors(calendarId: String): List<EventColor> = emptyList()
 }
+
+/** Цвет события: [key] — из палитры аккаунта (Google), null — записывается сам цвет. */
+data class EventColor(val key: String?, val color: Long)

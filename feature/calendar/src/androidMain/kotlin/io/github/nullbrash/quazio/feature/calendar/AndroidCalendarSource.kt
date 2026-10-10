@@ -190,7 +190,7 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
     override fun event(eventId: String): EventDraft? {
         val projection = arrayOf(
             Events.CALENDAR_ID, Events.TITLE, Events.DESCRIPTION, Events.EVENT_LOCATION, Events.DTSTART, Events.DTEND,
-            Events.DURATION, Events.ALL_DAY, Events.EVENT_TIMEZONE, Events.RRULE, Events.EVENT_COLOR_KEY,
+            Events.DURATION, Events.ALL_DAY, Events.EVENT_TIMEZONE, Events.RRULE, Events.EVENT_COLOR_KEY, Events.EVENT_COLOR,
         )
         val draft = cr.query(ContentUris.withAppendedId(Events.CONTENT_URI, eventId.toLong()), projection, null, null, null).use { c ->
             if (c == null || !c.moveToFirst()) return null
@@ -208,9 +208,29 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
                 description = c.str(2).orEmpty(),
                 rrule = c.str(9)?.takeIf { it.isNotBlank() },
                 colorKey = c.str(10)?.takeIf { it.isNotBlank() },
+                color = if (c.isNull(11)) null else c.getInt(11).toLong() and 0xFFFFFFFFL,
             )
         }
         return draft.copy(reminderMinutes = reminders(eventId))
+    }
+
+    /** Палитра аккаунта (у Google — 11 цветов с ключами); её нет — свои цвета, записываются без ключа. */
+    override fun eventColors(calendarId: String): List<EventColor> {
+        val (account, type) = cr.query(
+            ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId.toLong()),
+            arrayOf(Calendars.ACCOUNT_NAME, Calendars.ACCOUNT_TYPE), null, null, null,
+        ).use { c -> if (c == null || !c.moveToFirst()) return emptyList() else c.str(0) to c.str(1) }
+        val palette = cr.query(
+            CalendarContract.Colors.CONTENT_URI,
+            arrayOf(CalendarContract.Colors.COLOR_KEY, CalendarContract.Colors.COLOR),
+            "${CalendarContract.Colors.ACCOUNT_NAME} = ? AND ${CalendarContract.Colors.ACCOUNT_TYPE} = ? AND ${CalendarContract.Colors.COLOR_TYPE} = ?",
+            arrayOf(account.orEmpty(), type.orEmpty(), CalendarContract.Colors.TYPE_EVENT.toString()),
+            null,
+        ).use { c ->
+            c ?: return@use emptyList()
+            buildList { while (c.moveToNext()) add(EventColor(c.getString(0), c.getInt(1).toLong() and 0xFFFFFFFFL)) }
+        }
+        return palette.ifEmpty { OWN_PALETTE.map { EventColor(null, it) } }
     }
 
     private fun exceptionUri(eventId: String) = ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, eventId.toLong())
@@ -224,8 +244,12 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
         // У событий на весь день Android требует пояс UTC и полночь UTC.
         put(Events.EVENT_TIMEZONE, if (d.allDay) "UTC" else d.timeZone)
         put(Events.HAS_ALARM, if (d.reminderMinutes.isEmpty()) 0 else 1)
-        // Цвет — ключом из палитры календаря: Google понимает только свои 11 цветов.
-        if (d.colorKey != null) put(Events.EVENT_COLOR_KEY, d.colorKey) else { putNull(Events.EVENT_COLOR_KEY); putNull(Events.EVENT_COLOR) }
+        // Google понимает только свои 11 цветов — ключом из палитры; у календаря без палитры — сам цвет.
+        when {
+            d.colorKey != null -> put(Events.EVENT_COLOR_KEY, d.colorKey)
+            d.color != null -> { putNull(Events.EVENT_COLOR_KEY); put(Events.EVENT_COLOR, d.color.toInt()) }
+            else -> { putNull(Events.EVENT_COLOR_KEY); putNull(Events.EVENT_COLOR) }
+        }
         if (d.rrule != null) {
             // Повторяющееся событие задаётся длительностью, а не концом — иначе Android его отвергнет.
             put(Events.RRULE, d.rrule)
@@ -260,6 +284,10 @@ class AndroidCalendarSource(context: Context) : CalendarSource {
         private val EXDATE_TIME = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
         private val EXDATE_DAY = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")
         val PERMISSIONS = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+
+        /** Для календарей без палитры (локальных): те же оттенки, что у Google. */
+        private val OWN_PALETTE = listOf(0xFFD50000, 0xFFE67C73, 0xFFF4511E, 0xFFF6BF26, 0xFF33B679, 0xFF0B8043,
+            0xFF039BE5, 0xFF3F51B5, 0xFF7986CB, 0xFF8E24AA, 0xFF616161)
 
         fun hasPermission(context: Context): Boolean =
             PERMISSIONS.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }

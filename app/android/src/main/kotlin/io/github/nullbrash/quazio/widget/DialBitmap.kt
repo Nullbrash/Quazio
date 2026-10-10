@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.TextUtils
+import io.github.nullbrash.quazio.feature.calendar.DialColors
 import io.github.nullbrash.quazio.feature.calendar.DialLayout
 import kotlin.math.PI
 import kotlin.math.cos
@@ -29,6 +30,7 @@ internal object DialBitmap {
         centerBottom: String,
         untilText: String?,
         tomorrowText: String,
+        distinguish: Boolean,
     ): Bitmap {
         val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val cv = Canvas(bmp)
@@ -53,10 +55,11 @@ internal object DialBitmap {
         val bandInner = radius * 0.40f
         val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.BUTT }
         val baseText = 12f * px * 1.25f
-        for (s in layout.sectors) {
+        val colors = DialColors.of(layout.sectors, distinguish)
+        for ((i, s) in layout.sectors.withIndex()) {
             val laneWidth = (bandOuter - bandInner) / s.lanes
             val mid = bandOuter - laneWidth * (s.lane + 0.5f)
-            arc.color = (s.event.color ?: 0xFF9E9E9E).toInt()
+            arc.color = colors[i].toInt()
             arc.strokeWidth = laneWidth * 0.94f
             // Зазор между делами вплотную — иначе соседние сектора сливаются.
             val gap = if (s.sweep > 3f) 0.6f else 0f

@@ -151,6 +151,20 @@ class AndroidCalendarSourceTest {
     fun recurringEventSyncedWithGoogle() = editOneAndCancelOne(synced = true)
 
     @Test
+    fun phoneCalendarColourIsWrittenWithoutKey() {
+        // Календарь «на телефоне» без палитры аккаунта: свои цвета, записываются самим цветом.
+        val colors = source.eventColors(calendarId)
+        assertTrue(colors.isNotEmpty() && colors.all { it.key == null })
+        val red = colors.first().color
+        val id = source.create(EventDraft(calendarId, "Цветное", day(1), day(1) + 3_600_000, timeZone = "Europe/Moscow", color = red))
+        assertEquals(red, source.event(id)!!.color)
+        assertEquals(red, eventsOfTestCalendar().single { it.eventId == id }.color) // и на круге — этим цветом
+        // «Цвет календаря» — свой цвет снимается.
+        source.update(id, source.event(id)!!.copy(color = null))
+        assertEquals(null, source.event(id)!!.color)
+    }
+
+    @Test
     fun allDayEventUsesUtcMidnights() {
         source.create(EventDraft(calendarId, "Отпуск", UTC_DAY, UTC_DAY + 3 * DAY, allDay = true, timeZone = "Europe/Moscow"))
         val e = source.events(UTC_DAY - DAY, UTC_DAY + 5 * DAY, setOf(calendarId)).single()

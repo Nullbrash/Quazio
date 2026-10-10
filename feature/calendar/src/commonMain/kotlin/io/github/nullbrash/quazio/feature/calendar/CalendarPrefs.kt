@@ -43,6 +43,11 @@ class CalendarPrefs(private val store: KeyValueStore) {
         get() = store.get(KEY_WEEK_SUNDAY) == "1"
         set(value) = store.put(KEY_WEEK_SUNDAY, if (value) "1" else "0")
 
+    /** Соседние дела одного цвета на циферблате — чуть другим оттенком (по умолчанию да). */
+    var distinguishNeighbours: Boolean
+        get() = store.get(KEY_DISTINGUISH) != "0"
+        set(value) = store.put(KEY_DISTINGUISH, if (value) "1" else "0")
+
     fun isShown(calendar: CalendarInfo): Boolean = choices[calendar.id] ?: calendar.visibleInSystem
 
     fun shown(calendars: List<CalendarInfo>): List<CalendarInfo> = calendars.filter(::isShown)
@@ -65,5 +70,6 @@ class CalendarPrefs(private val store: KeyValueStore) {
         const val KEY_DEFAULT = "calendar.default"
         const val KEY_DIAL_24 = "calendar.dial_24"
         const val KEY_WEEK_SUNDAY = "calendar.week_sunday"
+        const val KEY_DISTINGUISH = "calendar.distinguish_neighbours"
     }
 }

@@ -44,6 +44,12 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import io.github.nullbrash.quazio.core.ui.res.cal_color_n
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
+import io.github.nullbrash.quazio.core.ui.res.cal_color_calendar
+import io.github.nullbrash.quazio.feature.calendar.EventColor
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -172,6 +178,8 @@ internal fun EventEditor(
     // Цвет события в Quazio не выбирается (у календарей свои цвета — решение пользователя);
     // назначенный в Google сохраняется при правке как был.
     var colorKey by remember { mutableStateOf<String?>(null) }
+    var color by remember { mutableStateOf<Long?>(null) }
+    var colors by remember { mutableStateOf<List<EventColor>>(emptyList()) }
     var timeZoneId by remember { mutableStateOf(zone.id) }
     var error by remember { mutableStateOf<String?>(null) }
     var askScope by remember { mutableStateOf<(suspend (Boolean) -> Unit)?>(null) }
@@ -193,8 +201,15 @@ internal fun EventEditor(
         location = d.location
         description = d.description
         colorKey = d.colorKey
+        color = d.color
         timeZoneId = d.timeZone
         loaded = true
+    }
+    // Цвет события — снова выбирается (решение пользователя): у Google — его палитра, иначе свои цвета.
+    LaunchedEffect(calendarId, loaded) {
+        val id = calendarId ?: return@LaunchedEffect
+        colors = withContext(Dispatchers.IO) { runCatching { source.eventColors(id) }.getOrDefault(emptyList()) }
+        if (colorKey != null && colors.none { it.key == colorKey }) colorKey = null
     }
     if (!loaded) return
     // Календарь только для просмотра (ПК — по ссылке; телефон — чужой или праздники): правку некуда записать.
@@ -215,7 +230,7 @@ internal fun EventEditor(
             val s = start.millis(zone)
             s to s + durationMin * MIN
         }
-        return EventDraft(cal, title.trim(), s, e, allDay, timeZoneId, location.trim(), description.trim(), repeat.toRrule(), reminders, colorKey)
+        return EventDraft(cal, title.trim(), s, e, allDay, timeZoneId, location.trim(), description.trim(), repeat.toRrule(), reminders, colorKey, if (colorKey == null) color else null)
     }
 
     fun save() {
@@ -293,7 +308,7 @@ internal fun EventEditor(
                 if (!allDay) {
                     val s = start.millis(zone)
                     val preview = CalendarEvent("preview", calendarId.orEmpty(), title, s, s + durationMin * MIN, false, null,
-                        calendars.firstOrNull { it.id == calendarId }?.color, null, false, s)
+                        chosenColor(colors, colorKey, color) ?: calendars.firstOrNull { it.id == calendarId }?.color, null, false, s)
                     val dayStart = start.date.startMillis(zone)
                     DayDial(
                         DialLayouts.layout(DialMode.DAY_24, listOf(preview), s, dayStart, dayStart + 1440 * MIN, { t -> millisToLocal(t, zone).let { it.hour * 60 + it.minute } }),
@@ -317,6 +332,21 @@ internal fun EventEditor(
             HorizontalDivider()
             Picker(stringResource(Res.string.cal_calendar), writable.firstOrNull { it.id == calendarId }?.name ?: "—") { dismiss ->
                 writable.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, leadingIcon = { ColorDot(c.color) }, onClick = { calendarId = c.id; dismiss() }) }
+            }
+            if (colors.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { colorKey = null; color = null }) { Text(stringResource(Res.string.cal_color_calendar)) }
+                    val colorLabel = stringResource(Res.string.cal_color_n)
+                    colors.forEachIndexed { n, c ->
+                        val selected = if (c.key != null) c.key == colorKey else colorKey == null && c.color == color
+                        Box(
+                            Modifier.size(28.dp).clip(CircleShape).background(colorOf(c.color))
+                                .border(if (selected) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                .clickable { colorKey = c.key; color = if (c.key == null) c.color else null }
+                                .semantics { contentDescription = "$colorLabel ${n + 1}"; this.selected = selected },
+                        )
+                    }
+                }
             }
             Picker(stringResource(Res.string.cal_repeat), stringResource(repeat.kind.label)) { dismiss ->
                 val kinds = RepeatKind.entries.filter { it != RepeatKind.CUSTOM || repeat.kind == RepeatKind.CUSTOM }
@@ -496,3 +526,6 @@ private fun EventDetails(
         }
     }
 }
+
+private fun chosenColor(colors: List<EventColor>, key: String?, color: Long?): Long? =
+    if (key != null) colors.firstOrNull { it.key == key }?.color else color

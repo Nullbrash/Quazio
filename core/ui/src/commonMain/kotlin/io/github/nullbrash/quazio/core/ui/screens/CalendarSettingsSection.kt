@@ -33,6 +33,8 @@ import io.github.nullbrash.quazio.core.ui.LocalCalendarAccess
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.action_cancel
 import io.github.nullbrash.quazio.core.ui.res.cal_change
+import io.github.nullbrash.quazio.core.ui.res.cal_distinguish_hint
+import io.github.nullbrash.quazio.core.ui.res.cal_distinguish
 import io.github.nullbrash.quazio.core.ui.res.cal_choose
 import io.github.nullbrash.quazio.core.ui.res.cal_default_hint
 import io.github.nullbrash.quazio.core.ui.res.cal_next
@@ -120,6 +122,7 @@ internal fun CalendarSettingsSection(source: CalendarSource, prefs: CalendarPref
                 Text(stringResource(Res.string.cal_week_sunday), modifier = Modifier.weight(1f))
                 Switch(sunday, { sunday = it; prefs.weekStartsSunday = it })
             }
+            DistinguishRow(prefs)
             TextButton(onClick = { prefs.enabled = false; enabled = false; onChanged() }) { Text(stringResource(Res.string.cal_turn_off)) }
         }
         if (denied) Text(stringResource(Res.string.cal_denied), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -243,4 +246,18 @@ internal fun DefaultCalendarDialog(
         confirmButton = { TextButton(onClick = { onDone(selected) }) { Text(stringResource(Res.string.cal_done)) } },
         dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(Res.string.action_cancel)) } },
     )
+}
+
+/** «Различать соседние дела одного цвета» — на круге во вкладке и на виджете (решение пользователя). */
+@Composable
+internal fun DistinguishRow(prefs: CalendarPrefs) {
+    val updateWidget = io.github.nullbrash.quazio.core.ui.LocalWidgetUpdater.current
+    var on by remember { mutableStateOf(prefs.distinguishNeighbours) }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(Res.string.cal_distinguish), modifier = Modifier.weight(1f))
+            Switch(on, { on = it; prefs.distinguishNeighbours = it; updateWidget?.invoke() })
+        }
+        Text(stringResource(Res.string.cal_distinguish_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }

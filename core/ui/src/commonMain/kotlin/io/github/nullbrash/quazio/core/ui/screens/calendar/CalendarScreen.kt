@@ -316,6 +316,7 @@ fun CalendarScreen(
                         onDrag = { deg -> cursor += (deg * (if (full24) 4f else 2f) * 60_000f).toLong(); live = false },
                         onCenterTap = ::backToNow,
                         onOpen = open,
+                        distinguish = prefs.distinguishNeighbours,
                     )
                 }
                 CalendarView.WEEK -> WeekView(weekStart(date, sunday), today, zone, events, onDay = ::openDay, onOpen = open)
@@ -369,6 +370,7 @@ private fun DayView(
     onDrag: (Float) -> Unit,
     onCenterTap: () -> Unit,
     onOpen: (CalendarEvent) -> Unit,
+    distinguish: Boolean,
 ) {
     val dayEvents = events.filter { it.occursOn(date, zone) }.sortedWith(compareBy({ !it.allDay }, { it.start }))
     val computed = DialLayouts.layout(
@@ -395,6 +397,7 @@ private fun DayView(
                     modifier = Modifier.widthIn(max = 380.dp).fillMaxWidth(),
                     onDrag = onDrag,
                     onCenterTap = onCenterTap,
+                    distinguish = distinguish,
                 )
             }
         }

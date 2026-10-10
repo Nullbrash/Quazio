@@ -170,6 +170,10 @@
     <string name="cal_scope_all">Все события серии</string>
     <string name="cal_delete_confirm">Удалить событие из календаря?</string>
     <string name="cal_choose">Выбрать</string>
+    <string name="cal_color_calendar">Цвет календаря</string>
+    <string name="cal_color_n">Цвет события</string>
+    <string name="cal_distinguish">Различать соседние дела одного цвета</string>
+    <string name="cal_distinguish_hint">Если дела одного цвета идут вплотную или пересекаются, на круге у второго — чуть другой оттенок. В календаре цвет не меняется.</string>
     <string name="cal_default_hint">Сюда Quazio будет записывать новые события. Для отдельного события календарь можно сменить в его окне.</string>
     <string name="cal_links_intro">На компьютере Quazio показывает календари Google по секретной ссылке — только просмотр. Создавать и менять события — на телефоне или в самом Google. Календари обновляются при открытии, раз в 15 минут, пока Quazio открыт, и кнопкой «Обновить».</string>
     <string name="cal_link_add">Добавить календарь Google</string>

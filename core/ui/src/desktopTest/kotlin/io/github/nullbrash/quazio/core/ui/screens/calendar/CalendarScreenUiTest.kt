@@ -24,6 +24,8 @@ import io.github.nullbrash.quazio.feature.calendar.CalendarKind
 import io.github.nullbrash.quazio.feature.calendar.CalendarPrefs
 import io.github.nullbrash.quazio.feature.calendar.CalendarSource
 import io.github.nullbrash.quazio.feature.calendar.EventDraft
+import io.github.nullbrash.quazio.feature.calendar.EventColor
+import androidx.compose.ui.test.performScrollTo
 import io.github.nullbrash.quazio.feature.calendar.KeyValueStore
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -70,6 +72,7 @@ class CalendarScreenUiTest {
         override fun delete(eventId: String) = Unit
         override fun deleteInstance(eventId: String, instanceStart: Long) = Unit
         override fun reminders(eventId: String) = emptyList<Int>()
+        override fun eventColors(calendarId: String) = listOf(EventColor("1", 0xFF7986CB), EventColor("2", 0xFF33B679), EventColor("3", 0xFFD50000))
         override fun event(eventId: String): EventDraft? = when (eventId) {
             "11" -> EventDraft("1", "Зарядка", todayStart - 10 * 24 * h + 7 * h, todayStart - 10 * 24 * h + 7 * h + h / 2, timeZone = zone.id, rrule = "FREQ=DAILY")
             else -> null
@@ -114,6 +117,22 @@ class CalendarScreenUiTest {
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Завтрашнее")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(dialToday, onNodeWithContentDescription("Циферблат дня").fetchSemanticsNode().boundsInRoot.top)
         assertEquals(buttonToday, onNodeWithContentDescription("Следующий день").fetchSemanticsNode().boundsInRoot.top)
+    }
+
+    @Test
+    fun eventColourIsChosenAndWritten() = runComposeUiTest {
+        // Выбор цвета вернулся (решение пользователя): у Google — ключ из его палитры.
+        val source = FakeSource()
+        setContent { MaterialTheme { CalendarScreen(source, prefs) } }
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Зарядка")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithContentDescription("Новое событие").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasContentDescription("Цвет события 2")).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasSetTextAction())[0].performTextInput("Врач")
+        onNodeWithContentDescription("Цвет события 2").performScrollTo().performClick()
+        onNodeWithText("Сохранить").performClick()
+        waitUntil(timeoutMillis = 10_000) { source.created.isNotEmpty() }
+        assertEquals("2", source.created.single().colorKey)
+        assertNull(source.created.single().color)
     }
 
     @Test
