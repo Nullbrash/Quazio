@@ -55,6 +55,16 @@ class WidgetPrefsTest {
     }
 
     @Test
+    fun sharedStringRoundTripsAndRejectsOtherText() {
+        val mine = DialStyle(sectorBase = 0xFF8E24AA, allSectorsBase = true, sectorTime = 0xFFFFFFFF, opacity = 90)
+        assertEquals(mine, DialStyle.parseShared(mine.share()))
+        assertEquals(mine, DialStyle.parseShared("  " + mine.share() + "\n")) // пробелы из мессенджера
+        kotlin.test.assertNull(DialStyle.parseShared("Купить молоко"))
+        kotlin.test.assertNull(DialStyle.parseShared(null))
+        kotlin.test.assertNull(DialStyle.parseShared(DialStyle.SHARE_PREFIX + "nothing=1"))
+    }
+
+    @Test
     fun oldCircleOpacityBecomesBackgroundAlpha() {
         val store = MemoryStore().apply { put("widget.circle_opacity", "70") }
         val p = WidgetPrefs(store)

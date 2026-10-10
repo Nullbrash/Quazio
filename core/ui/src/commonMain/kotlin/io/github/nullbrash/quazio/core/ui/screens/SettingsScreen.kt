@@ -42,7 +42,7 @@ fun SettingsScreen(versionName: String, services: AppServices, deviceAuth: Devic
             HorizontalDivider()
         }
         if (services.widgetPrefs != null && io.github.nullbrash.quazio.core.ui.LocalWidgetUpdater.current != null) {
-            WidgetSection(services.widgetPrefs)
+            WidgetSection(services.widgetPrefs, services)
             HorizontalDivider()
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

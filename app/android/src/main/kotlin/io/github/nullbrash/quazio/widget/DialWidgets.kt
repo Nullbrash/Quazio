@@ -10,6 +10,10 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
+import io.github.nullbrash.quazio.feature.calendar.WidgetPrefs
+import io.github.nullbrash.quazio.feature.calendar.DialLayout
+import android.widget.FrameLayout
+import android.graphics.Canvas
 import android.graphics.Bitmap
 import android.content.Intent
 import android.os.Build
@@ -53,8 +57,34 @@ internal object DialWidgets {
         }
         val services = AppGraph.services(context)
         val prefs = services.widgetPrefs ?: return
-        val zone = TimeZone.currentSystemDefault()
         val now = System.currentTimeMillis()
+        val scene = scene(context, prefs, now)
+        val look = prefs.style
+        val density = context.resources.displayMetrics.density
+        for (id in ids) {
+            val side = sideDp(mgr.getAppWidgetOptions(id))
+            val px = (side * density).toInt().coerceIn(MIN_PX, MAX_PX)
+            val dial = scene.render(px, look)
+            val views = views(context.packageName, dial, look, prefs.showButtons)
+            views.setOnClickPendingIntent(R.id.widget_dial, open(context, NEW_EVENT_NO))
+            views.setOnClickPendingIntent(R.id.widget_calendar, open(context, NEW_EVENT_NO))
+            views.setOnClickPendingIntent(R.id.widget_add, open(context, NEW_EVENT_YES))
+            mgr.updateAppWidget(id, views)
+        }
+        scheduleTick(context, (now / MINUTE_MS + 1) * MINUTE_MS)
+        CalendarChangeJob.schedule(context)
+    }
+
+    /** Что рисуется сейчас: раскладка дня и подписи — общее для всех виджетов и превью. */
+    private class Scene(
+        val layout: DialLayout, val center: String, val date: String, val until: String?, val tomorrow: String,
+        val distinguish: Boolean, val hm: (Long) -> String,
+    ) {
+        fun render(px: Int, look: DialStyle) = DialBitmap.render(layout, px, look, center, date, until, tomorrow, distinguish, hm)
+    }
+
+    private fun scene(context: Context, prefs: WidgetPrefs, now: Long): Scene {
+        val zone = TimeZone.currentSystemDefault()
         val local = Instant.fromEpochMilliseconds(now).toLocalDateTime(zone)
         val dayStart = LocalDateTime(local.date, LocalTime(0, 0)).toInstant(zone).toEpochMilliseconds()
         val dayEnd = LocalDateTime(local.date.plus(DatePeriod(days = 1)), LocalTime(0, 0)).toInstant(zone).toEpochMilliseconds()
@@ -67,22 +97,22 @@ internal object DialWidgets {
         val date = "${local.day}.${local.month.ordinal + 1}"
         val until = layout.untilNext?.let { "${it.minutes / 60}:${(it.minutes % 60).toString().padStart(2, '0')}" }
         val tomorrow = runBlocking { WidgetLabels.tomorrow() }
-        val look = prefs.style
         val hm: (Long) -> String = { t -> Instant.fromEpochMilliseconds(t).toLocalDateTime(zone).let { "${it.hour.toString().padStart(2, '0')}:${it.minute.toString().padStart(2, '0')}" } }
-        val density = context.resources.displayMetrics.density
-        for (id in ids) {
-            val side = sideDp(mgr.getAppWidgetOptions(id))
-            val px = (side * density).toInt().coerceIn(MIN_PX, MAX_PX)
-            val dial = DialBitmap.render(layout, px, look, center, date, until, tomorrow,
-                distinguish = services.calendarPrefs?.distinguishNeighbours ?: true, hm = hm)
-            val views = views(context.packageName, dial, look, prefs.showButtons)
-            views.setOnClickPendingIntent(R.id.widget_dial, open(context, NEW_EVENT_NO))
-            views.setOnClickPendingIntent(R.id.widget_calendar, open(context, NEW_EVENT_NO))
-            views.setOnClickPendingIntent(R.id.widget_add, open(context, NEW_EVENT_YES))
-            mgr.updateAppWidget(id, views)
-        }
-        scheduleTick(context, (now / MINUTE_MS + 1) * MINUTE_MS)
-        CalendarChangeJob.schedule(context)
+        return Scene(layout, center, date, until, tomorrow, AppGraph.services(context).calendarPrefs?.distinguishNeighbours ?: true, hm)
+    }
+
+    /**
+     * Превью для экрана «Цвета»: весь виджет (круг и кнопки) на сегодняшнем дне — той же
+     * разметкой и рисовальщиком, что на рабочем столе (решение пользователя: превью — свой день).
+     */
+    fun preview(context: Context, look: DialStyle, sidePx: Int): Bitmap? {
+        val prefs = AppGraph.services(context).widgetPrefs ?: return null
+        val views = views(context.packageName, scene(context, prefs, System.currentTimeMillis()).render(sidePx, look), look, prefs.showButtons)
+        val view = views.apply(context, FrameLayout(context))
+        val exact = View.MeasureSpec.makeMeasureSpec(sidePx, View.MeasureSpec.EXACTLY)
+        view.measure(exact, exact)
+        view.layout(0, 0, sidePx, sidePx)
+        return Bitmap.createBitmap(sidePx, sidePx, Bitmap.Config.ARGB_8888).also { view.draw(Canvas(it)) }
     }
 
     /** Вид виджета без нажатий: круг, кнопки, их цвет и прозрачность. */

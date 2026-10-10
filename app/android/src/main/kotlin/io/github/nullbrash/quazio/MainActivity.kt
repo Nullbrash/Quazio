@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.fragment.app.FragmentActivity
 import io.github.nullbrash.quazio.core.ui.IncomingText
 import io.github.nullbrash.quazio.core.ui.QuazioApp
@@ -42,6 +43,7 @@ class MainActivity : FragmentActivity() {
                 reminderPlatform = reminderPlatform,
                 openRequests = openRequests,
                 widgetUpdater = { DialWidgets.updateAsync(applicationContext) },
+                widgetPreview = { look, side -> DialWidgets.preview(applicationContext, look, side)?.asImageBitmap() },
             )
         }
     }

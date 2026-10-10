@@ -39,6 +39,12 @@ val LocalReminderPlatform = staticCompositionLocalOf<ReminderPlatform?> { null }
 /** Перерисовать виджеты на рабочем столе (поменялись их настройки); null — виджетов нет (ПК). */
 val LocalWidgetUpdater = staticCompositionLocalOf<(() -> Unit)?> { null }
 
+/**
+ * Картинка виджета с цветами [DialStyle] и стороной в пикселях — для превью в настройках;
+ * рисует платформа тем же кодом, что виджет. Блокирующая — из фона. null — виджетов нет (ПК).
+ */
+val LocalWidgetPreview = staticCompositionLocalOf<((io.github.nullbrash.quazio.feature.calendar.DialStyle, Int) -> androidx.compose.ui.graphics.ImageBitmap?)?> { null }
+
 /** Куда открыть Quazio по нажатию на уведомление: «Записать» платёж, день календаря. */
 sealed interface OpenRequest {
     data class RecordPayment(val recurringId: String, val date: kotlinx.datetime.LocalDate) : OpenRequest

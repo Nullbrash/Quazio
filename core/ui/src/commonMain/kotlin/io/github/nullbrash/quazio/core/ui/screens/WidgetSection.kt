@@ -16,7 +16,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.OutlinedButton
+import io.github.nullbrash.quazio.core.ui.AppServices
 import io.github.nullbrash.quazio.core.ui.LocalWidgetUpdater
+import io.github.nullbrash.quazio.core.ui.res.widget_colors
 import io.github.nullbrash.quazio.core.ui.res.Res
 import io.github.nullbrash.quazio.core.ui.res.widget_24
 import io.github.nullbrash.quazio.core.ui.res.widget_buttons
@@ -33,11 +36,12 @@ import org.jetbrains.compose.resources.stringResource
 
 /** «Настройки → Виджет на рабочем столе»: базовые настройки (решение пользователя), общие для всех виджетов. */
 @Composable
-internal fun WidgetSection(prefs: WidgetPrefs) {
+internal fun WidgetSection(prefs: WidgetPrefs, services: AppServices) {
     val update = LocalWidgetUpdater.current ?: return
     val scope = rememberCoroutineScope()
     var dial24 by remember { mutableStateOf(prefs.dial24) }
     var opacity by remember { mutableStateOf(prefs.circleOpacity.toFloat()) }
+    var colors by remember { mutableStateOf<List<Long>?>(null) }
     var until by remember { mutableStateOf(prefs.showUntilNext) }
     var buttons by remember { mutableStateOf(prefs.showButtons) }
     fun save(block: () -> Unit) {
@@ -56,7 +60,24 @@ internal fun WidgetSection(prefs: WidgetPrefs) {
         Slider(opacity, { opacity = it }, valueRange = 0f..100f, steps = 9, onValueChangeFinished = { save { prefs.circleOpacity = opacity.toInt() } })
         SwitchRow(stringResource(Res.string.widget_until), until) { until = it; save { prefs.showUntilNext = it } }
         SwitchRow(stringResource(Res.string.widget_buttons), buttons) { buttons = it; save { prefs.showButtons = it } }
+        OutlinedButton(onClick = {
+            scope.launch { colors = withContext(Dispatchers.IO) { calendarColors(services) } }
+        }) { Text(stringResource(Res.string.widget_colors)) }
     }
+    colors?.let { cal ->
+        WidgetColorsScreen(prefs, cal) {
+            colors = null
+            opacity = prefs.circleOpacity.toFloat() // фон мог поменяться на экране цветов
+        }
+    }
+}
+
+/** Цвета показываемых календарей — для ряда «Уже используются»; нет доступа — пусто. */
+private fun calendarColors(services: AppServices): List<Long> {
+    val source = services.calendar ?: return emptyList()
+    val prefs = services.calendarPrefs ?: return emptyList()
+    if (!prefs.enabled) return emptyList()
+    return runCatching { prefs.shown(source.calendars()).map { it.color } }.getOrDefault(emptyList())
 }
 
 @Composable

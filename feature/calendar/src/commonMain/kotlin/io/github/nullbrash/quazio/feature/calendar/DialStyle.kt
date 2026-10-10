@@ -46,6 +46,9 @@ data class DialStyle(
     fun encode(): String =
         (COLORS.map { "${it.key}=${hex(it.get(this))}" } + "all_base=${if (allSectorsBase) 1 else 0}" + "opacity=$opacity").joinToString(";")
 
+    /** Строка для «Копировать настройки»: пользователь хранит её у себя и вставляет обратно. */
+    fun share(): String = SHARE_PREFIX + encode()
+
     /** Одно поле цвета — для хранения и экрана настройки. */
     class ColorField(val key: String, val get: (DialStyle) -> Long, val set: (DialStyle, Long) -> DialStyle)
 
@@ -76,6 +79,17 @@ data class DialStyle(
             ColorField("hour_numbers", { it.hourNumbers }) { s, c -> s.copy(hourNumbers = c) },
             ColorField("buttons", { it.buttons }) { s, c -> s.copy(buttons = c) },
         )
+
+        /** Префикс отличает настройки виджета от случайного текста в буфере обмена. */
+        const val SHARE_PREFIX = "quazio-widget-style:"
+
+        /** Настройки из строки «Копировать настройки»; не она — null (случайный текст не применяется). */
+        fun parseShared(text: String?): DialStyle? {
+            val body = text?.trim()?.takeIf { it.startsWith(SHARE_PREFIX) }?.removePrefix(SHARE_PREFIX) ?: return null
+            val keys = body.split(';').map { it.substringBefore('=') }
+            if (keys.none { k -> COLORS.any { it.key == k } }) return null
+            return decode(body)
+        }
 
         fun decode(text: String?): DialStyle {
             var style = DialStyle()

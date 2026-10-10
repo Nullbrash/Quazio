@@ -79,8 +79,10 @@ fun QuazioApp(
     reminderPlatform: ReminderPlatform? = null,
     openRequests: OpenRequests? = null,
     widgetUpdater: (() -> Unit)? = null,
+    widgetPreview: ((io.github.nullbrash.quazio.feature.calendar.DialStyle, Int) -> androidx.compose.ui.graphics.ImageBitmap?)? = null,
 ) = CompositionLocalProvider(
     LocalWidgetUpdater provides widgetUpdater,
+    LocalWidgetPreview provides widgetPreview,
     LocalFileSaver provides fileSaver,
     LocalIncomingText provides incoming,
     LocalCalendarAccess provides calendarAccess,
