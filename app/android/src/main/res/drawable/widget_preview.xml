@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Превью виджета в списке виджетов рабочего стола (без него One UI рисует пустую сетку). Создано скриптом: круг, сектора, стрелка. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="200dp" android:height="200dp" android:viewportWidth="200" android:viewportHeight="200">
+    <path android:fillColor="#FF000000" android:pathData="M15.00,100.00 A85.00,85.00 0 1 1 185.00,100.00 A85.00,85.00 0 1 1 15.00,100.00 Z" />
+    <path android:fillColor="#FF0B8043" android:pathData="M122.17,20.59 A82.45,82.45 0 0 1 157.69,41.09 L123.79,75.71 A34.00,34.00 0 0 0 109.14,67.25 Z" />
+    <path android:fillColor="#FFE67C73" android:pathData="M158.91,42.31 A82.45,82.45 0 0 1 179.41,77.83 L132.75,90.86 A34.00,34.00 0 0 0 124.29,76.21 Z" />
+    <path android:fillColor="#FF3F51B5" android:pathData="M179.86,79.50 A82.45,82.45 0 0 1 179.86,120.50 L132.93,108.46 A34.00,34.00 0 0 0 132.93,91.54 Z" />
+    <path android:fillColor="#FFF6BF26" android:pathData="M140.48,171.83 A82.45,82.45 0 0 1 79.50,179.86 L85.52,156.40 A58.23,58.23 0 0 0 128.58,150.73 Z" />
+    <path android:fillColor="#FF8E24AA" android:pathData="M114.48,156.40 A58.23,58.23 0 0 1 71.42,150.73 L83.31,129.62 A34.00,34.00 0 0 0 108.46,132.93 Z" />
+    <path android:fillColor="#FF039BE5" android:pathData="M20.14,120.50 A82.45,82.45 0 0 1 28.17,59.52 L70.38,83.31 A34.00,34.00 0 0 0 67.07,108.46 Z" />
+    <path android:strokeColor="#46FFFFFF" android:strokeWidth="0.6" android:pathData="M100.00,74.50 L100.00,15.00 M112.75,77.92 L142.50,26.39 M122.08,87.25 L173.61,57.50 M125.50,100.00 L185.00,100.00 M122.08,112.75 L173.61,142.50 M112.75,122.08 L142.50,173.61 M100.00,125.50 L100.00,185.00 M87.25,122.08 L57.50,173.61 M77.92,112.75 L26.39,142.50 M74.50,100.00 L15.00,100.00 M77.92,87.25 L26.39,57.50 M87.25,77.92 L57.50,26.39" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.40" android:strokeLineCap="round" android:pathData="M97.56,72.06 A28.05,28.05 0 0 1 107.26,72.91" />
+    <path android:strokeColor="#FFE53935" android:strokeWidth="2.12" android:strokeLineCap="round" android:pathData="M97.78,74.60 L92.37,12.78" />
+</vector>
